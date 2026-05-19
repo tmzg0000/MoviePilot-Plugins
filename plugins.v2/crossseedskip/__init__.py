@@ -217,6 +217,7 @@ class CrossSeedSkip(_PluginBase):
             self._torrentpath = config.get("torrentpath") or ""
             self._torrentpaths = self._torrentpath.strip().split(",") if self._torrentpath.strip() else []
             self._sites = config.get("sites") or []
+            self._select_all_sites = config.get("select_all_sites") or False
             self._notify = config.get("notify")
             self._nolabels = config.get("nolabels")
             self._nopaths = config.get("nopaths")
@@ -253,6 +254,10 @@ class CrossSeedSkip(_PluginBase):
                     proxy=site.get("proxy"),
                 )
             self._sites = [site.id for site in all_site_cs_info_map.values() if site.id in self._sites]
+
+            if self._select_all_sites:
+                self._sites = [site.id for site in all_site_cs_info_map.values()]
+
             site_names = [site.name for site in all_site_cs_info_map.values() if site.id in self._sites]
 
             site_name_key_map = dict()
@@ -342,18 +347,6 @@ class CrossSeedSkip(_PluginBase):
     def get_command() -> List[Dict[str, Any]]:
         return []
 
-    def get_api(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "path": "/select_all_sites",
-                "endpoint": self.select_all_sites_api,
-                "methods": ["GET"],
-                "auth": "bear",
-                "summary": "获取全部站点ID",
-                "description": "返回所有可选站点的ID列表，用于前端一键全选。"
-            }
-        ]
-
     def get_service(self) -> List[Dict[str, Any]]:
         if self.get_state():
             if self._cron:
@@ -442,8 +435,28 @@ class CrossSeedSkip(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
-                                    'md': 10
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'select_all_sites',
+                                            'label': '全选所有站点',
+                                            'hint': '启用后将自动使用全部可用站点，忽略下方的单独选择'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
                                 },
                                 'content': [
                                     {
@@ -454,31 +467,6 @@ class CrossSeedSkip(_PluginBase):
                                             'model': 'sites',
                                             'label': '辅种站点',
                                             'items': site_options
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 2,
-                                    'class': 'd-flex align-center'
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VBtn',
-                                        'props': {
-                                            'color': 'primary',
-                                            'variant': 'tonal',
-                                            'text': '全选站点'
-                                        },
-                                        'events': {
-                                            'click': {
-                                                'api': 'plugin/CrossSeedSkip/select_all_sites',
-                                                'method': 'get',
-                                                'state': 'sites'
-                                            }
                                         }
                                     }
                                 ]
@@ -744,6 +732,7 @@ class CrossSeedSkip(_PluginBase):
             "downloaders": self._downloaders,
             "torrentpath": self._torrentpath,
             "sites": self._sites,
+            "select_all_sites": self._select_all_sites,
             "notify": self._notify,
             "nolabels": self._nolabels,
             "nopaths": self._nopaths,
@@ -1135,16 +1124,6 @@ class CrossSeedSkip(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             logger.error(str(e))
-
-    def select_all_sites_api(self):
-        try:
-            customSites = self.__custom_sites()
-            all_site_ids = ([site.id for site in SiteOper().list_order_by_pri()]
-                            + [site.get("id") for site in customSites])
-            return {"success": True, "sites": all_site_ids}
-        except Exception as e:
-            logger.error(f"获取全选站点列表失败: {e}")
-            return {"success": False, "sites": []}
 
     def __custom_sites(self) -> List[Any]:
         custom_sites = []
