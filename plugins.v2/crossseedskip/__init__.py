@@ -1141,10 +1141,10 @@ class CrossSeedSkip(_PluginBase):
             customSites = self.__custom_sites()
             all_site_ids = ([site.id for site in SiteOper().list_order_by_pri()]
                             + [site.get("id") for site in customSites])
-            return {"success": True, "site_ids": all_site_ids}
+            return {"success": True, "sites": all_site_ids}
         except Exception as e:
             logger.error(f"获取全选站点列表失败: {e}")
-            return {"success": False, "site_ids": []}
+            return {"success": False, "sites": []}
 
     def __custom_sites(self) -> List[Any]:
         custom_sites = []
