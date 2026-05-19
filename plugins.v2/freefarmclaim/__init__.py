@@ -17,24 +17,24 @@ from app.schemas.types import EventType
 urllib3.disable_warnings(InsecureRequestWarning)
 
 
-class NovaHDClaim(_PluginBase):
-    plugin_name = "NovaHD任务领取"
-    plugin_desc = "每月定时为NovaHD领取任务，领取后推送飞书消息通知。"
+class FreeFarmClaim(_PluginBase):
+    plugin_name = "农场PT任务领取"
+    plugin_desc = "每月定时为农场PT领取任务，领取后推送飞书消息通知。"
     plugin_icon = "signin.png"
     plugin_version = "1.0.0"
     plugin_author = "schalkiii"
     author_url = ""
-    plugin_config_prefix = "novahdclaim_"
-    plugin_order = 32
+    plugin_config_prefix = "freefarmclaim_"
+    plugin_order = 33
     auth_level = 1
 
-    CLAIM_URL = "https://pt.novahd.top/ajax.php"
-    TASK_PAGE_URL = "https://pt.novahd.top/task.php"
-    SITE_DOMAIN = "pt.novahd.top"
+    CLAIM_URL = "https://pt.0ff.cc/ajax.php"
+    TASK_PAGE_URL = "https://pt.0ff.cc/task.php"
+    SITE_DOMAIN = "pt.0ff.cc"
 
     _enabled = False
     _cookie = ""
-    _exam_id = "3"
+    _exam_id = "12"
     _cron = "0 0 1 * *"
     _notify = True
     _run_once = False
@@ -45,12 +45,12 @@ class NovaHDClaim(_PluginBase):
         site_cookie = self.__get_site_cookie()
         self._enabled = bool(config.get("enabled", False))
         self._cookie = (config.get("cookie") or site_cookie or "").strip()
-        self._exam_id = (config.get("exam_id") or "3").strip()
+        self._exam_id = (config.get("exam_id") or "12").strip()
         self._cron = (config.get("cron") or "0 0 1 * *").strip()
         self._notify = bool(config.get("notify", True))
         self._run_once = bool(config.get("run_once", False))
         logger.info(
-            f"NovaHD任务领取初始化完成：enabled={self._enabled}, "
+            f"农场PT任务领取初始化完成：enabled={self._enabled}, "
             f"exam_id={self._exam_id}, cron={self._cron}, notify={self._notify}"
         )
         if self._run_once:
@@ -73,11 +73,11 @@ class NovaHDClaim(_PluginBase):
     def get_command() -> List[Dict[str, Any]]:
         return [
             {
-                "cmd": "/nhdclaim",
+                "cmd": "/ffclaim",
                 "event": EventType.PluginAction,
-                "desc": "执行NovaHD任务领取",
+                "desc": "执行农场PT任务领取",
                 "category": "站点",
-                "data": {"action": "novahd_claim"}
+                "data": {"action": "freefarm_claim"}
             }
         ]
 
@@ -88,7 +88,7 @@ class NovaHDClaim(_PluginBase):
                 "endpoint": self.run_once_api,
                 "methods": ["POST"],
                 "auth": "bear",
-                "summary": "立即执行NovaHD任务领取",
+                "summary": "立即执行农场PT任务领取",
                 "description": "按当前插件配置立即执行一次任务领取。"
             },
             {
@@ -96,8 +96,8 @@ class NovaHDClaim(_PluginBase):
                 "endpoint": self.get_cookie_api,
                 "methods": ["GET"],
                 "auth": "bear",
-                "summary": "获取NovaHD站点Cookie",
-                "description": "从站点管理中获取NovaHD站点的Cookie。"
+                "summary": "获取农场PT站点Cookie",
+                "description": "从站点管理中获取农场PT站点的Cookie。"
             }
         ]
 
@@ -107,12 +107,12 @@ class NovaHDClaim(_PluginBase):
         try:
             trigger = CronTrigger.from_crontab(self._cron)
         except ValueError:
-            logger.warn("NovaHD任务领取 Cron 配置无效，定时服务未注册")
+            logger.warn("农场PT任务领取 Cron 配置无效，定时服务未注册")
             return []
         return [
             {
-                "id": "NovaHDClaim",
-                "name": "NovaHD任务领取",
+                "id": "FreeFarmClaim",
+                "name": "农场PT任务领取",
                 "trigger": trigger,
                 "func": self.claim_task,
                 "kwargs": {}
@@ -177,8 +177,8 @@ class NovaHDClaim(_PluginBase):
                                         "props": {
                                             "model": "exam_id",
                                             "label": "任务ID (exam_id)",
-                                            "placeholder": "3",
-                                            "hint": "NovaHD的任务ID，默认为3"
+                                            "placeholder": "12",
+                                            "hint": "农场PT的任务ID，默认为12"
                                         }
                                     }
                                 ]
@@ -210,10 +210,10 @@ class NovaHDClaim(_PluginBase):
                                         "component": "VTextarea",
                                         "props": {
                                             "model": "cookie",
-                                            "label": "NovaHD Cookie",
+                                            "label": "农场PT Cookie",
                                             "rows": 3,
                                             "placeholder": "填写包含 c_secure_pass 的完整 Cookie",
-                                            "hint": "留空时读取站点管理中的NovaHD站点 Cookie；填写后仅本插件使用，不会修改站点 Cookie"
+                                            "hint": "留空时读取站点管理中的农场PT站点 Cookie；填写后仅本插件使用，不会修改站点 Cookie"
                                         }
                                     }
                                 ]
@@ -235,7 +235,7 @@ class NovaHDClaim(_PluginBase):
                                         },
                                         "events": {
                                             "click": {
-                                                "api": "plugin/NovaHDClaim/get_cookie",
+                                                "api": "plugin/FreeFarmClaim/get_cookie",
                                                 "method": "get"
                                             }
                                         }
@@ -300,7 +300,7 @@ class NovaHDClaim(_PluginBase):
 
     def run_once_api(self):
         threading.Thread(target=self.claim_task, daemon=True).start()
-        return {"status": "started", "message": "NovaHD任务领取已启动"}
+        return {"status": "started", "message": "农场PT任务领取已启动"}
 
     def get_cookie_api(self):
         result = self.__get_site_cookie_detail()
@@ -321,7 +321,7 @@ class NovaHDClaim(_PluginBase):
     @eventmanager.register(EventType.PluginAction)
     def handle_command(self, event: Event):
         action = event.event_data.get("action")
-        if action == "novahd_claim":
+        if action == "freefarm_claim":
             threading.Thread(
                 target=self.claim_task,
                 daemon=True
@@ -330,13 +330,13 @@ class NovaHDClaim(_PluginBase):
     def claim_task(self):
         with self._lock:
             try:
-                logger.info("NovaHD任务领取开始执行")
+                logger.info("农场PT任务领取开始执行")
                 if not self._cookie:
-                    logger.error("NovaHD任务领取：未配置Cookie，无法执行")
+                    logger.error("农场PT任务领取：未配置Cookie，无法执行")
                     if self._notify:
                         self.post_message(
                             mtype=NotificationType.SiteMessage,
-                            title="【NovaHD任务领取】",
+                            title="【农场PT任务领取】",
                             text="未配置Cookie，无法执行任务领取"
                         )
                     return
@@ -354,22 +354,22 @@ class NovaHDClaim(_PluginBase):
                 self.__save_record(record)
 
                 if result.get("success"):
-                    logger.info(f"NovaHD任务领取成功：{result.get('message')}")
+                    logger.info(f"农场PT任务领取成功：{result.get('message')}")
                     if self._notify:
                         self.post_message(
                             mtype=NotificationType.SiteMessage,
-                            title="【NovaHD任务领取】",
+                            title="【农场PT任务领取】",
                             text=f"任务领取成功！\n"
                                  f"日期：{today}\n"
                                  f"任务ID：{self._exam_id}\n"
                                  f"结果：{result.get('message')}"
                         )
                 else:
-                    logger.warn(f"NovaHD任务领取失败：{result.get('message')}")
+                    logger.warn(f"农场PT任务领取失败：{result.get('message')}")
                     if self._notify:
                         self.post_message(
                             mtype=NotificationType.SiteMessage,
-                            title="【NovaHD任务领取】",
+                            title="【农场PT任务领取】",
                             text=f"任务领取失败！\n"
                                  f"日期：{today}\n"
                                  f"任务ID：{self._exam_id}\n"
@@ -377,11 +377,11 @@ class NovaHDClaim(_PluginBase):
                         )
 
             except Exception as e:
-                logger.error(f"NovaHD任务领取异常：{e}")
+                logger.error(f"农场PT任务领取异常：{e}")
                 if self._notify:
                     self.post_message(
                         mtype=NotificationType.SiteMessage,
-                        title="【NovaHD任务领取】",
+                        title="【农场PT任务领取】",
                         text=f"任务领取异常：{str(e)}"
                     )
 
@@ -409,7 +409,7 @@ class NovaHDClaim(_PluginBase):
                 "action": "claimTask",
                 "params[exam_id]": self._exam_id
             }
-            logger.info(f"NovaHD任务领取请求：exam_id={self._exam_id}")
+            logger.info(f"农场PT任务领取请求：exam_id={self._exam_id}")
             response = requests.post(
                 self.CLAIM_URL,
                 headers=headers,
@@ -425,10 +425,10 @@ class NovaHDClaim(_PluginBase):
             except Exception:
                 return {"success": False, "message": f"响应解析失败: {response.text[:200]}"}
 
-            logger.info(f"NovaHD任务领取响应: {response.text[:500]}")
+            logger.info(f"农场PT任务领取响应: {response.text[:500]}")
 
             if isinstance(result, dict):
-                if result.get("success") or result.get("state") or result.get("code") == 0:
+                if result.get("ret") == 0 or result.get("success") or result.get("state"):
                     msg = result.get("msg") or result.get("message") or "领取成功"
                     return {"success": True, "message": msg, "raw": result}
                 else:
@@ -457,7 +457,7 @@ class NovaHDClaim(_PluginBase):
             siteoper = SiteOper()
             site = siteoper.get_by_domain(self.SITE_DOMAIN)
             if not site:
-                return {"success": False, "msg": f"未添加NovaHD站点({self.SITE_DOMAIN})！请在站点管理中添加。"}
+                return {"success": False, "msg": f"未添加农场PT站点({self.SITE_DOMAIN})！请在站点管理中添加。"}
             cookie = site.cookie
             if not cookie or str(cookie).strip().lower() == "cookie":
                 return {"success": False, "msg": "站点Cookie为空或无效，请在站点管理中配置！"}

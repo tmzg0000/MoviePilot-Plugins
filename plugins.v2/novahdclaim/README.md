@@ -42,4 +42,4 @@ MoviePilot 插件，每月定时为 [NovaHD](https://pt.novahd.top) 领取任务
 
 ## 作者
 
-novahd
+schalkiii

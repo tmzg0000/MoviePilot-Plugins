@@ -22,7 +22,7 @@ class CangbaoGeClaim(_PluginBase):
     plugin_desc = "每月定时为藏宝阁PT领取任务，领取后推送飞书消息通知。"
     plugin_icon = "signin.png"
     plugin_version = "1.0.0"
-    plugin_author = "cangbaoge"
+    plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "cangbaogeclaim_"
     plugin_order = 31
