@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.4.0"
+    plugin_version = "1.4.1"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -409,7 +409,8 @@ class TangptLottery(_PluginBase):
                                         "props": {
                                             "color": "success",
                                             "variant": "tonal",
-                                            "text": "获取Cookie"
+                                            "text": "获取Cookie",
+                                            "state": "cookie"
                                         },
                                         "events": {
                                             "click": {
@@ -446,28 +447,73 @@ class TangptLottery(_PluginBase):
                         "content": [
                             {
                                 "component": "div",
+                                "props": {"class": "text-subtitle-2 font-weight-bold mb-1"},
+                                "text": "🎰 基础机制"
+                            },
+                            {
+                                "component": "div",
                                 "props": {"class": "text-body-2"},
-                                "text": "RTP(Return To Player) = 玩家回报率，即每投入100元平均能拿回多少。"
+                                "text": "每次旋转消耗底注（魔力值）。旋转后随机停在3个图案上，根据图案组合判定中奖等级和派彩金额。每日有免费旋转次数，超出后需付费旋转。"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-subtitle-2 font-weight-bold mt-2 mb-1"},
+                                "text": "📊 EV计算"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-body-2"},
+                                "text": "EV(Expected Value) = 期望值，即每次旋转平均盈亏（魔力值）。"
                             },
                             {
                                 "component": "div",
                                 "props": {"class": "text-body-2 mt-1"},
-                                "text": "EV(Expected Value) = 期望值，即每次旋转平均盈亏。"
+                                "text": "EV = Σ(每种结果概率 × 该结果派彩金额) + P(Jackpot) × 奖池金额 - 底注"
                             },
                             {
                                 "component": "div",
                                 "props": {"class": "text-body-2 mt-1"},
-                                "text": "计算方式：EV = Σ(每种结果概率 × 该结果派彩金额) - 底注"
+                                "text": "RTP(Return To Player) = 玩家回报率 = (底注+EV)/底注 × 100%，即每投入100能拿回多少。"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-subtitle-2 font-weight-bold mt-2 mb-1"},
+                                "text": "🔢 示例"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-body-2"},
+                                "text": "底注5000时，三连概率约7%派彩6250，二连概率约25%派彩1875，未中奖概率约68%派彩0。"
                             },
                             {
                                 "component": "div",
                                 "props": {"class": "text-body-2 mt-1"},
-                                "text": "例如底注5000时，三连概率7.05%派彩6250，二连概率~25%派彩1875，未中奖概率67.95%派彩0。"
+                                "text": "基础EV = 7%×6250 + 25%×1875 - 5000 ≈ -406（不含Jackpot），加上Jackpot期望后为综合EV。"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-subtitle-2 font-weight-bold mt-2 mb-1"},
+                                "text": "⚙️ 开关建议"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-body-2"},
+                                "text": "开启「仅期望盈利时抽」：EV > 0 时自动付费旋转，EV ≤ 0 时仅执行免费旋转，避免期望亏损。"
                             },
                             {
                                 "component": "div",
                                 "props": {"class": "text-body-2 mt-1"},
-                                "text": "加上Jackpot期望后得出综合EV。若EV为负(期望亏损)，启用\"仅期望盈利时抽\"则跳过付费旋转。"
+                                "text": "关闭后：无论EV正负，都会执行全部付费旋转直到达到最大次数。"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-subtitle-2 font-weight-bold mt-2 mb-1"},
+                                "text": "💡 小贴士"
+                            },
+                            {
+                                "component": "div",
+                                "props": {"class": "text-body-2"},
+                                "text": "老虎机开启后会自动抽取spin_token并计算EV，任务完成后推送包含胜率、净收益和旋转详情的通知。"
                             }
                         ]
                     }
@@ -713,6 +759,7 @@ class TangptLottery(_PluginBase):
                         "prizes": [],
                         "total_cost": 0,
                         "total_compensated": 0,
+                        "total_awarded": 0,
                         "status": "running",
                         "message": ""
                     }
@@ -733,6 +780,7 @@ class TangptLottery(_PluginBase):
                 request_count = today_record.get("request_count", 0)
                 total_cost = today_record.get("total_cost", 0)
                 total_compensated = today_record.get("total_compensated", 0)
+                total_awarded = today_record.get("total_awarded", 0)
 
                 while completed < target:
                     draw_count = min(self._draw_count, target - completed)
@@ -746,6 +794,7 @@ class TangptLottery(_PluginBase):
                         today_record["prizes"] = all_prizes
                         today_record["total_cost"] = total_cost
                         today_record["total_compensated"] = total_compensated
+                        today_record["total_awarded"] = total_awarded
                         self.__save_records(records)
                         if self._notify:
                             prize_text = ""
@@ -767,6 +816,7 @@ class TangptLottery(_PluginBase):
                     request_count += 1
                     total_cost += result.get("total_cost", 0)
                     total_compensated += result.get("total_compensated", 0)
+                    total_awarded += result.get("total_awarded", 0)
 
                     logger.info(f"躺平自动抽奖：第 {request_count} 批请求完成，抽得 {len(prizes)} 个奖品: {', '.join(prizes[:10]) if prizes else '无'}"
                                 + (f" (共{len(prizes)}个)" if len(prizes) > 10 else ""))
@@ -776,6 +826,7 @@ class TangptLottery(_PluginBase):
                     today_record["prizes"] = all_prizes
                     today_record["total_cost"] = total_cost
                     today_record["total_compensated"] = total_compensated
+                    today_record["total_awarded"] = total_awarded
                     today_record["message"] = f"已完成 {completed}/{target}"
 
                     vip_prize = any("VIP" in p or "vip" in p for p in prizes)
@@ -863,17 +914,19 @@ class TangptLottery(_PluginBase):
                 if result.get("ok"):
                     prizes = []
                     total_cost = result.get("total_cost", 0)
-                    total_compensated = result.get("total_compensated", 0)
-                    for item in result.get("items", []):
+                    total_compensated = result.get("total_compensated_bonus", 0)
+                    total_awarded = result.get("total_awarded_bonus", 0)
+                    for item in result.get("results", []):
                         name = TangptLottery.__extract_prize_name(item)
                         item_count = item.get("count", 1) if isinstance(item, dict) else 1
                         if name:
-                            prizes.extend([name] * item_count)
+                            prizes.extend([name.strip()] * item_count)
                     return {
                         "success": True,
                         "prizes": prizes,
                         "total_cost": total_cost,
                         "total_compensated": total_compensated,
+                        "total_awarded": total_awarded,
                         "raw": result
                     }
                 else:
@@ -1316,30 +1369,44 @@ class TangptLottery(_PluginBase):
         jackpot_hit = record.get("jackpot_hit", False)
         jackpot_pool = record.get("jackpot_pool", 0)
         ev_detail = record.get("ev_detail", "")
+        ev = record.get("ev", 0)
 
-        spin_results = []
+        win_rate = f"{wins / total_spins * 100:.0f}%" if total_spins > 0 else "0%"
+        net_icon = "📈" if net > 0 else "📉" if net < 0 else "➡️"
+        ev_icon = "🟢" if ev > 0 else "🔴" if ev < 0 else "🟡"
+
+        paid = total_spins - free_used
+
+        spin_lines = []
         for r in results:
-            reels_icons = " | ".join([reel.get("name", "?") for reel in r.get("reels", [])])
+            icons = "".join([reel.get("name", "?") for reel in r.get("reels", [])])
             sr = r.get("result", "?")
             payout = r.get("payout", 0)
-            spin_results.append(f"  [{reels_icons}] {sr}, 派彩{payout:,}")
+            if payout > 0:
+                spin_lines.append(f"  {icons}  {sr} (+{payout:,})")
+            else:
+                spin_lines.append(f"  {icons}  {sr}")
+
+        detail_limit = 12
+        detail_text = "\n".join(spin_lines[:detail_limit])
+        if len(spin_lines) > detail_limit:
+            detail_text += f"\n  ... (共{len(spin_lines)}转)"
 
         text = (
-            f"日期：{record.get('date')}\n"
-            f"{ev_text}\n"
-            f"EV明细: {ev_detail}\n"
-            f"旋转：{total_spins} 转 (免费{free_used}+付费{total_spins-free_used})\n"
-            f"结果：赢{wins} / 输{losses}\n"
-            f"花费：{total_cost:,}  派彩：{total_payout:,}\n"
-            f"净收益：{net:+,}"
+            f"🎰 躺平老虎机 · {record.get('date')}\n\n"
+            f"💰 投入：{total_cost:,}  派彩：{total_payout:,}\n"
+            f"{net_icon} 净收益：{net:+,}\n\n"
+            f"🎲 旋转：{total_spins} 次 (免费{free_used} + 付费{paid})\n"
+            f"🎯 胜负：赢 {wins} / 输 {losses} (胜率{win_rate})\n"
+            f"{ev_icon} 期望收益：{ev:+.1f}/次"
         )
+        if ev_detail:
+            text += f"\n📋 EV明细：{ev_detail}"
         if jackpot_hit:
-            text += "  Jackpot!"
+            text += "\n🎊 Jackpot!!!"
         if jackpot_pool > 0:
-            text += f"\n当前奖池：{jackpot_pool:,}"
-        text += "\n\n详情：\n" + "\n".join(spin_results[:15])
-        if len(spin_results) > 15:
-            text += f"\n  ... (共{len(spin_results)}转)"
+            text += f"\n💰 当前奖池：{jackpot_pool:,}"
+        text += f"\n\n🎬 旋转详情：\n{detail_text}"
 
         self.post_message(
             mtype=NotificationType.SiteMessage,
@@ -1395,22 +1462,57 @@ class TangptLottery(_PluginBase):
 
     def __send_lottery_notification(self, record: dict, prizes: list):
         prize_counter = Counter(prizes)
-        prize_text = "\n".join([f"  {name}: {count}次" for name, count in prize_counter.most_common()])
-        if not prize_text:
-            prize_text = "  无奖品记录"
+        total_prizes = len(prizes)
+        winning_count = sum(1 for p in prizes if p not in ("谢谢参与", "thanks"))
+        win_rate = f"{(winning_count / total_prizes * 100):.1f}%" if total_prizes > 0 else "0%"
+
+        def group(category, keyword, emoji):
+            items = [p for p in prizes if keyword.lower() in p.lower()]
+            if not items:
+                return ""
+            grouped = Counter(items)
+            parts = []
+            for name, cnt in grouped.most_common():
+                short = name.split(": ")[-1] if ": " in name else name
+                parts.append(f"{short}×{cnt}")
+            return f"  {emoji} {category}：{', '.join(parts)}"
+
+        thank_keywords = ["谢谢参与", "thanks", "谢谢惠顾", "惠顾"]
+        thank_count = sum(prize_counter.get(k, 0) for k in thank_keywords)
+
+        cat_lines = []
+        cat_lines.append(group("VIP", "vip", "👑"))
+        cat_lines.append(group("魔力值", "魔力", "✨"))
+        cat_lines.append(group("邀请", "邀请", "📨"))
+        cat_lines.append(group("勋章", "勋章", "🏅"))
+        cat_lines.append(group("道具", "道具", "🎁"))
+        if thank_count > 0:
+            cat_lines.append(f"  💤 谢谢惠顾：{thank_count}次")
+        all_keywords = ["vip", "魔力", "邀请", "勋章", "道具", "谢谢", "thanks", "惠顾"]
+        other = [p for p in prizes if not any(k in p.lower() for k in all_keywords)]
+        if other:
+            other_counter = Counter(other)
+            cat_lines.append(f"  📦 其他：{', '.join([f'{n}×{c}' for n, c in other_counter.most_common()])}")
+        prize_block = "\n".join([l for l in cat_lines if l])
+        if not prize_block:
+            prize_block = "  无奖品记录"
+
         total_cost = record.get("total_cost", 0)
         total_compensated = record.get("total_compensated", 0)
+        total_awarded = record.get("total_awarded", 0)
+        total_back = total_compensated + total_awarded
         cost_text = ""
         if total_cost > 0:
-            net_cost = total_cost - total_compensated
-            cost_text = f"\n花费：{total_cost:,}  返还：{total_compensated:,}  净支出：{net_cost:,}"
+            net_cost = total_cost - total_back
+            cost_text = f"\n💰 花费：{total_cost:,}  返还：{total_compensated:,}  奖品价值：{total_awarded:,}  净支出：{net_cost:,}"
+
         self.post_message(
             mtype=NotificationType.SiteMessage,
             title="【躺平自动抽奖助手】",
-            text=f"日期：{record.get('date')}\n"
-                 f"完成：{record.get('completed_count', 0)}/{record.get('target_count', 0)}{cost_text}\n"
-                 f"状态：{self.__status_text(record.get('status'))}\n"
-                 f"奖品：\n{prize_text}"
+            text=f"📅 日期：{record.get('date')}\n"
+                 f"🎯 抽奖次数：{record.get('completed_count', 0)}/{record.get('target_count', 0)}  状态：{self.__status_text(record.get('status'))}\n"
+                 f"🎉 中奖率：{win_rate} ({winning_count}/{total_prizes}){cost_text}\n\n"
+                 f"📊 奖品汇总：\n{prize_block}"
         )
 
     def __get_records(self) -> List[dict]:
