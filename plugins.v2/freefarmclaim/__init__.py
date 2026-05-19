@@ -236,7 +236,8 @@ class FreeFarmClaim(_PluginBase):
                                         "events": {
                                             "click": {
                                                 "api": "plugin/FreeFarmClaim/get_cookie",
-                                                "method": "get"
+                                                "method": "get",
+                                                "state": "cookie"
                                             }
                                         }
                                     }

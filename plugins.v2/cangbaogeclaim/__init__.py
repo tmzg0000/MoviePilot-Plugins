@@ -42,8 +42,9 @@ class CangbaoGeClaim(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         config = config or {}
+        site_cookie = self.__get_site_cookie()
         self._enabled = bool(config.get("enabled", False))
-        self._cookie = (config.get("cookie") or "").strip()
+        self._cookie = (config.get("cookie") or site_cookie or "").strip()
         self._exam_id = (config.get("exam_id") or "11").strip()
         self._cron = (config.get("cron") or "0 0 1 * *").strip()
         self._notify = bool(config.get("notify", True))
@@ -235,7 +236,8 @@ class CangbaoGeClaim(_PluginBase):
                                         "events": {
                                             "click": {
                                                 "api": "plugin/CangbaoGeClaim/get_cookie",
-                                                "method": "get"
+                                                "method": "get",
+                                                "state": "cookie"
                                             }
                                         }
                                     }

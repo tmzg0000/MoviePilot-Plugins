@@ -236,7 +236,8 @@ class NovaHDClaim(_PluginBase):
                                         "events": {
                                             "click": {
                                                 "api": "plugin/NovaHDClaim/get_cookie",
-                                                "method": "get"
+                                                "method": "get",
+                                                "state": "cookie"
                                             }
                                         }
                                     }
