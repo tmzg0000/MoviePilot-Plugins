@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.5.0"
+    plugin_version = "1.5.1"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -51,6 +51,7 @@ class TangptLottery(_PluginBase):
     _slot_enabled = False
     _slot_max_spins = 100
     _slot_ev_only = True
+    _skip_vip_stop = False
     _lock = threading.Lock()
 
     def init_plugin(self, config: dict = None):
@@ -68,6 +69,7 @@ class TangptLottery(_PluginBase):
         self._slot_enabled = bool(config.get("slot_enabled", False))
         self._slot_max_spins = self.__safe_int(config.get("slot_max_spins"), 100, min_value=1)
         self._slot_ev_only = bool(config.get("slot_ev_only", True))
+        self._skip_vip_stop = bool(config.get("skip_vip_stop", False))
         logger.info(
             f"躺平自动抽奖助手初始化完成：enabled={self._enabled}, "
             f"draw_count={self._draw_count}, target_count={self._target_count}, "
@@ -86,6 +88,7 @@ class TangptLottery(_PluginBase):
                 "slot_enabled": self._slot_enabled,
                 "slot_max_spins": self._slot_max_spins,
                 "slot_ev_only": self._slot_ev_only,
+                "skip_vip_stop": self._skip_vip_stop,
                 "run_once": False
             })
             logger.info("收到配置页立即运行请求，后台启动抽奖+老虎机任务")
@@ -303,6 +306,25 @@ class TangptLottery(_PluginBase):
                                                 ]
                                             }
                                         ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "skip_vip_stop",
+                                            "label": "忽略VIP停止 (不推荐)",
+                                            "hint": "抽中VIP后继续抽奖直至完成目标；开启后VIP正常计入但不断抽"
+                                        }
                                     }
                                 ]
                             }
@@ -557,6 +579,7 @@ class TangptLottery(_PluginBase):
             "slot_enabled": self._slot_enabled,
             "slot_max_spins": self._slot_max_spins,
             "slot_ev_only": self._slot_ev_only,
+            "skip_vip_stop": self._skip_vip_stop,
             "run_once": False
         }
 
@@ -725,6 +748,7 @@ class TangptLottery(_PluginBase):
                 "slot_enabled": self._slot_enabled,
                 "slot_max_spins": self._slot_max_spins,
                 "slot_ev_only": self._slot_ev_only,
+                "skip_vip_stop": self._skip_vip_stop,
                 "run_once": False
             })
             return {"success": True, "cookie": cookie, "message": "Cookie获取成功"}
@@ -841,7 +865,7 @@ class TangptLottery(_PluginBase):
                     today_record["message"] = f"已完成 {completed}/{target}"
 
                     vip_prize = any("VIP" in p or "vip" in p for p in prizes)
-                    if vip_prize:
+                    if vip_prize and not self._skip_vip_stop:
                         logger.info("躺平自动抽奖：抽中VIP，停止抽奖")
                         today_record["status"] = "vip"
                         today_record["message"] = f"抽中VIP！已完成 {completed}/{target}"
@@ -849,6 +873,8 @@ class TangptLottery(_PluginBase):
                         if self._notify:
                             self.__send_lottery_notification(today_record, all_prizes)
                         return
+                    elif vip_prize:
+                        logger.info("躺平自动抽奖：抽中VIP，但已设置忽略VIP停止，继续抽奖")
 
                     time.sleep(1)
 

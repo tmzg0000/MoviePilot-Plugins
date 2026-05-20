@@ -92,8 +92,7 @@ for i, batch in enumerate(batches):
 
     vip = any("VIP" in p or "vip" in p for p in prizes)
     if vip:
-        print("*** VIP! Stopping ***")
-        break
+        print(f"*** VIP hit (ignored, continuing) ***")
 
     time.sleep(1.5)
 
