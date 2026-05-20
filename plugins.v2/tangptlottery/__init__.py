@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.4.1"
+    plugin_version = "1.5.0"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -39,6 +39,7 @@ class TangptLottery(_PluginBase):
     SLOT_PAGE_URL = "https://www.tangpt.top/omnibot_slot.php"
     SITE_DOMAIN = "www.tangpt.top"
     MAX_HISTORY = 30
+    ALLOWED_BATCH_SIZES = [100, 50, 20, 10, 1]
 
     _enabled = False
     _cookie = ""
@@ -58,6 +59,8 @@ class TangptLottery(_PluginBase):
         self._enabled = bool(config.get("enabled", False))
         self._cookie = (config.get("cookie") or site_cookie or "").strip()
         self._draw_count = self.__safe_int(config.get("draw_count"), 100, min_value=1)
+        if self._draw_count not in self.ALLOWED_BATCH_SIZES:
+            self._draw_count = min(self.ALLOWED_BATCH_SIZES, key=lambda s: abs(s - self._draw_count))
         self._target_count = self.__safe_int(config.get("target_count"), 1000, min_value=1)
         self._cron = (config.get("cron") or "10 2 * * *").strip()
         self._notify = bool(config.get("notify", True))
@@ -249,15 +252,20 @@ class TangptLottery(_PluginBase):
                                                                 "props": {"cols": 12, "md": 4},
                                                                 "content": [
                                                                     {
-                                                                        "component": "VTextField",
-                                                                        "props": {
-                                                                            "model": "draw_count",
-                                                                            "label": "每次抽奖数量",
-                                                                            "type": "number",
-                                                                            "min": 1,
-                                                                            "hint": "单次请求抽奖次数"
-                                                                        }
-                                                                    }
+                                                                "component": "VSelect",
+                                                                "props": {
+                                                                    "model": "draw_count",
+                                                                    "label": "每批次抽奖数",
+                                                                    "items": [
+                                                                        {"title": "单抽 (1次)", "value": 1},
+                                                                        {"title": "十连抽 (10次)", "value": 10},
+                                                                        {"title": "二十连 (20次)", "value": 20},
+                                                                        {"title": "五十连 (50次)", "value": 50},
+                                                                        {"title": "一百连 (100次)", "value": 100}
+                                                                    ],
+                                                                    "hint": "站点支持的抽奖批次大小"
+                                                                }
+                                                            }
                                                                 ]
                                                             },
                                                             {
@@ -782,9 +790,12 @@ class TangptLottery(_PluginBase):
                 total_compensated = today_record.get("total_compensated", 0)
                 total_awarded = today_record.get("total_awarded", 0)
 
-                while completed < target:
-                    draw_count = min(self._draw_count, target - completed)
-                    result = self.__do_draw(draw_count)
+                remaining = target - completed
+                batches = self._decompose_draw_count(remaining, self._draw_count)
+                logger.info(f"躺平自动抽奖：剩余{remaining}次，分解为{len(batches)}批次: {batches}")
+
+                for batch in batches:
+                    result = self.__do_draw(batch)
 
                     if not result.get("success"):
                         today_record["status"] = "error"
@@ -812,13 +823,13 @@ class TangptLottery(_PluginBase):
 
                     prizes = result.get("prizes", [])
                     all_prizes.extend(prizes)
-                    completed += draw_count
+                    completed += batch
                     request_count += 1
                     total_cost += result.get("total_cost", 0)
                     total_compensated += result.get("total_compensated", 0)
                     total_awarded += result.get("total_awarded", 0)
 
-                    logger.info(f"躺平自动抽奖：第 {request_count} 批请求完成，抽得 {len(prizes)} 个奖品: {', '.join(prizes[:10]) if prizes else '无'}"
+                    logger.info(f"躺平自动抽奖：第 {request_count} 批请求完成({batch}次)，抽得 {len(prizes)} 个奖品: {', '.join(prizes[:10]) if prizes else '无'}"
                                 + (f" (共{len(prizes)}个)" if len(prizes) > 10 else ""))
 
                     today_record["completed_count"] = completed
@@ -952,6 +963,17 @@ class TangptLottery(_PluginBase):
                 if value and isinstance(value, str):
                     return value
         return None
+
+    @staticmethod
+    def _decompose_draw_count(remaining: int, max_batch: int = 100) -> List[int]:
+        batches = []
+        for size in TangptLottery.ALLOWED_BATCH_SIZES:
+            if size > max_batch:
+                continue
+            while remaining >= size:
+                batches.append(size)
+                remaining -= size
+        return batches
 
     def run_slot_task(self):
         with self._lock:
