@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.5.1"
+    plugin_version = "1.6.0"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -801,6 +801,16 @@ class TangptLottery(_PluginBase):
                 today_record["target_count"] = target
                 completed = today_record.get("completed_count", 0)
 
+                page_info = self.__fetch_lottery_page()
+                if page_info.get("success"):
+                    daily_remaining = page_info["remaining"]
+                    if target > daily_remaining:
+                        logger.warning(f"躺平自动抽奖：目标{target}超过今日剩余{daily_remaining}，限制为{daily_remaining}")
+                        target = daily_remaining
+                        today_record["target_count"] = target
+                else:
+                    logger.warning(f"躺平自动抽奖：无法获取今日剩余次数: {page_info.get('message')}")
+
                 if completed >= target:
                     logger.info(f"躺平自动抽奖：今日已完成 {completed}/{target}，达到目标")
                     today_record["status"] = "completed"
@@ -819,10 +829,11 @@ class TangptLottery(_PluginBase):
                 logger.info(f"躺平自动抽奖：剩余{remaining}次，分解为{len(batches)}批次: {batches}")
 
                 for batch in batches:
-                    result = self.__do_draw(batch)
+                    result = self.__do_draw_with_retry(batch)
 
                     if not result.get("success"):
-                        today_record["status"] = "error"
+                        is_daily_limit = result.get("daily_limit", False)
+                        today_record["status"] = "completed" if is_daily_limit else "error"
                         today_record["message"] = result.get("message", "抽奖请求失败")
                         today_record["completed_count"] = completed
                         today_record["request_count"] = request_count
@@ -832,17 +843,22 @@ class TangptLottery(_PluginBase):
                         today_record["total_awarded"] = total_awarded
                         self.__save_records(records)
                         if self._notify:
-                            prize_text = ""
-                            if all_prizes:
-                                counter = Counter(all_prizes)
-                                prize_text = "\n".join([f"  {name}: {count}次" for name, count in counter.most_common()])
-                            self.post_message(
-                                mtype=NotificationType.SiteMessage,
-                                title="【躺平自动抽奖助手】",
-                                text=f"抽奖出错：{result.get('message', '未知错误')}\n"
-                                     f"已完成：{completed}/{target}\n"
-                                     f"本次已获奖品：\n{prize_text or '  无'}"
-                            )
+                            if is_daily_limit:
+                                today_record["status"] = "completed"
+                                today_record["message"] = "已达每日抽奖上限"
+                                self.__send_lottery_notification(today_record, all_prizes)
+                            else:
+                                prize_text = ""
+                                if all_prizes:
+                                    counter = Counter(all_prizes)
+                                    prize_text = "\n".join([f"  {name}: {count}次" for name, count in counter.most_common()])
+                                self.post_message(
+                                    mtype=NotificationType.SiteMessage,
+                                    title="【躺平自动抽奖助手】",
+                                    text=f"抽奖出错：{result.get('message', '未知错误')}\n"
+                                         f"已完成：{completed}/{target}\n"
+                                         f"本次已获奖品：\n{prize_text or '  无'}"
+                                )
                         return
 
                     prizes = result.get("prizes", [])
@@ -1483,6 +1499,46 @@ class TangptLottery(_PluginBase):
         except Exception as e:
             logger.error(f"获取抽奖信息失败: {e}")
         return info
+
+    def __fetch_lottery_page(self) -> Dict[str, Any]:
+        try:
+            import re as _re
+            headers = {
+                "cookie": self._cookie,
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+            }
+            response = requests.get(self.LOTTERY_PAGE_URL, headers=headers, timeout=15, verify=False)
+            if response.status_code != 200:
+                return {"success": False, "message": f"页面请求失败 HTTP {response.status_code}"}
+            html = response.text
+            remaining_match = _re.search(r'今天还可以抽\s*(\d+)\s*次', html)
+            if remaining_match:
+                remaining = int(remaining_match.group(1))
+                logger.info(f"躺平抽奖页面：今日还可抽奖 {remaining} 次")
+                return {"success": True, "remaining": remaining}
+            return {"success": False, "message": "无法从页面获取剩余抽奖次数"}
+        except Exception as e:
+            logger.error(f"获取躺平抽奖页面失败: {e}")
+            return {"success": False, "message": str(e)}
+
+    def __do_draw_with_retry(self, count: int, max_retries: int = 3) -> Dict[str, Any]:
+        last_result = None
+        for attempt in range(max_retries + 1):
+            result = self.__do_draw(count)
+            if result.get("success"):
+                return result
+            msg = result.get("message", "")
+            is_http_error = msg.startswith("HTTP ")
+            status_code = int(msg.split()[1]) if is_http_error else 0
+            if status_code == 422:
+                logger.warning(f"躺平抽奖 {count} 次返回422，已达每日上限")
+                return {"success": False, "daily_limit": True, "message": "每日抽奖次数已用完"}
+            if attempt < max_retries:
+                wait = 2 ** attempt
+                logger.warning(f"躺平抽奖 {count} 次失败: {msg}，第{attempt+1}次重试，等待{wait}秒")
+                time.sleep(wait)
+            last_result = result
+        return last_result if last_result else {"success": False, "message": "重试耗尽"}
 
     def __get_site_cookie(self) -> str:
         try:
