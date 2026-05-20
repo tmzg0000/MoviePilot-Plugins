@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.6.0"
+    plugin_version = "1.6.1"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -1530,14 +1530,19 @@ class TangptLottery(_PluginBase):
             msg = result.get("message", "")
             is_http_error = msg.startswith("HTTP ")
             status_code = int(msg.split()[1]) if is_http_error else 0
-            if status_code == 422:
-                logger.warning(f"躺平抽奖 {count} 次返回422，已达每日上限")
-                return {"success": False, "daily_limit": True, "message": "每日抽奖次数已用完"}
             if attempt < max_retries:
-                wait = 2 ** attempt
-                logger.warning(f"躺平抽奖 {count} 次失败: {msg}，第{attempt+1}次重试，等待{wait}秒")
+                if status_code == 422:
+                    wait = 30 * (2 ** attempt)
+                    logger.warning(f"躺平抽奖 {count} 次返回422，等待{wait}秒后重试 ({attempt+1}/{max_retries})")
+                else:
+                    wait = 2 ** attempt
+                    logger.warning(f"躺平抽奖 {count} 次失败: {msg}，第{attempt+1}次重试，等待{wait}秒")
                 time.sleep(wait)
             last_result = result
+        final_msg = last_result.get("message", "") if last_result else ""
+        is_422 = final_msg.startswith("HTTP ") and "422" in final_msg
+        if is_422:
+            return {"success": False, "daily_limit": True, "message": "每日抽奖次数已用完"}
         return last_result if last_result else {"success": False, "message": "重试耗尽"}
 
     def __get_site_cookie(self) -> str:
