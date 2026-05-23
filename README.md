@@ -1,7 +1,6 @@
-# MoviePilot-Plugins
+# MoviePilot-Plugins (Schalkiii's fork)
 
-MoviePilot 官方插件仓库，也是 MoviePilot 插件市场默认读取的插件索引与源码仓库：
-<https://github.com/jxxghp/MoviePilot-Plugins>
+基于 [MoviePilot 官方插件仓库](https://github.com/jxxghp/MoviePilot-Plugins) 的 fork，包含以下自研插件
 
 这个仓库本身并不是独立运行时，插件真正的运行宿主在后端仓库 `MoviePilot`，插件 UI 的渲染宿主在前端仓库 `MoviePilot-Frontend`。因此，开发插件时需要同时理解这三个仓库的分工。
 
@@ -43,6 +42,7 @@ MoviePilot-Plugins/
 
 | 插件 | 目录 | 说明 |
 |------|------|------|
+| 青蛙辅种助手跳验版 | [plugins.v2/crossseedskip/](plugins.v2/crossseedskip/) | 基于青蛙辅种助手改造，支持跳过哈希校验，适配 qBittorrent 5 |
 | 藏宝阁PT任务领取 | [plugins.v2/cangbaogeclaim/](plugins.v2/cangbaogeclaim/) | 每月定时为藏宝阁PT领取任务，支持一键获取Cookie，飞书推送通知 |
 | NovaHD任务领取 | [plugins.v2/novahdclaim/](plugins.v2/novahdclaim/) | 每月定时为NovaHD领取任务，支持一键获取Cookie，飞书推送通知 |
 | 躺平自动抽奖助手 | [plugins.v2/tangptlottery/](plugins.v2/tangptlottery/) | 躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析 |
