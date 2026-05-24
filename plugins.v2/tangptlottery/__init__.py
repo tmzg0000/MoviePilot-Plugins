@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.6.2"
+    plugin_version = "1.6.3"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -412,7 +412,7 @@ class TangptLottery(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12},
+                                "props": {"cols": 12, "md": 10},
                                 "content": [
                                     {
                                         "component": "VTextarea",
@@ -421,7 +421,32 @@ class TangptLottery(_PluginBase):
                                             "label": "躺平站点 Cookie",
                                             "rows": 3,
                                             "placeholder": "填写包含 c_secure_pass 的完整 Cookie",
-                                            "hint": "打开配置页时自动从站点管理获取躺平站点Cookie；填写后仅本插件使用，不会修改站点Cookie"
+                                            "hint": "留空时读取站点管理中的躺平站点 Cookie；填写后仅本插件使用，不会修改站点 Cookie"
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {
+                                    "cols": 12,
+                                    "md": 2,
+                                    "class": "d-flex align-center"
+                                },
+                                "content": [
+                                    {
+                                        "component": "VBtn",
+                                        "props": {
+                                            "color": "success",
+                                            "variant": "tonal",
+                                            "text": "获取Cookie",
+                                            "state": "cookie"
+                                        },
+                                        "events": {
+                                            "click": {
+                                                "api": "plugin/TangptLottery/get_cookie",
+                                                "method": "get"
+                                            }
                                         }
                                     }
                                 ]
@@ -1253,12 +1278,7 @@ class TangptLottery(_PluginBase):
             payout = payout_mult * base_cost
             expected = prob * payout
             total_expected_payout += expected
-            row_details.append(
-                f"{row.get('name','?')}: "
-                f"概率{row.get('probability',0):.2f}% × "
-                f"派彩{payout:,} = "
-                f"期望{expected:.2f}"
-            )
+            row_details.append((row.get('name', '?'), row.get('probability', 0), payout, expected))
 
         base_ev = total_expected_payout - base_cost
         base_rtp = total_expected_payout / base_cost * 100
@@ -1279,35 +1299,39 @@ class TangptLottery(_PluginBase):
         if triple_prob > 0:
             p_symbol_given_triple = jackpot_prob / triple_prob * 100
             jackpot_detail = (
-                f"Jackpot: {hits}/{spins}={jackpot_prob*100:.4f}% | "
-                f"理论=P(三连={triple_prob*100:.2f}%)×P(7|三连={p_symbol_given_triple:.2f}%) | "
-                f"奖池{jackpot_pool:,} × {jackpot_prob*100:.4f}% = 期望+{jackpot_ev:.2f}"
+                f"Jackpot {hits}/{spins}={jackpot_prob*100:.4f}% | "
+                f"理论 P(三连={triple_prob*100:.2f}%)×P(7|三连={p_symbol_given_triple:.2f}%) | "
+                f"期望 +{jackpot_ev:,.2f}"
             )
         else:
             jackpot_detail = (
-                f"Jackpot: {hits}/{spins}={jackpot_prob*100:.4f}% | "
-                f"奖池{jackpot_pool:,} × {jackpot_prob*100:.4f}% = 期望+{jackpot_ev:.2f}"
+                f"Jackpot {hits}/{spins}={jackpot_prob*100:.4f}% | "
+                f"期望 +{jackpot_ev:,.2f}"
             )
 
         total_ev = base_ev + jackpot_ev
         total_rtp = (total_expected_payout + jackpot_ev) / base_cost * 100
 
-        detail_parts = [
-            f"底注={base_cost:,}",
-            f"--- 各等奖期望 ---",
-        ] + row_details + [
-            f"--- 汇总 ---",
-            f"基础期望派彩={total_expected_payout:.2f}",
-            f"基础EV={total_expected_payout:,} - {base_cost:,} = {base_ev:+,.2f}",
-            f"基础RTP={base_rtp:.2f}%",
-        ]
-        if jackpot_detail:
-            detail_parts.append(jackpot_detail)
-        detail_parts.append(f"综合期望派彩={total_expected_payout+jackpot_ev:.2f}")
-        detail_parts.append(f"综合EV={total_ev:+,.2f}/次")
-        detail_parts.append(f"综合RTP={total_rtp:.2f}%")
+        lines = []
+        lines.append(f"　底注 {base_cost:,}")
+        lines.append("　━━━━━━━━━━━━━━━━━━")
 
-        return total_ev, " | ".join(detail_parts)
+        for name, prob_pct, payout, expected in row_details:
+            payout_tag = " 💰" if payout > base_cost * 5 else ""
+            lines.append(f"　{name:<12} 概率 {prob_pct:>6.2f}%  派彩 {payout:>8,}  期望 {expected:>8.2f}{payout_tag}")
+
+        lines.append("　━━━━━━━━━━━━━━━━━━")
+        lines.append(f"　基础期望派彩 {total_expected_payout:>8,.2f}")
+        lines.append(f"　基础EV {base_ev:+,.2f}    基础RTP {base_rtp:.2f}%")
+
+        if jackpot_detail:
+            lines.append(f"　{jackpot_detail}")
+
+        lines.append("　━━━━━━━━━━━━━━━━━━")
+        lines.append(f"　综合期望派彩 {total_expected_payout+jackpot_ev:>8,.2f}")
+        lines.append(f"　综合EV {total_ev:+,.2f}/次  综合RTP {total_rtp:.2f}%")
+
+        return total_ev, "\n".join(lines)
 
     def __refresh_spin_token(self, current_token: str, spin_result: dict) -> str:
         new_token = spin_result.get("new_spin_token", "")
@@ -1440,7 +1464,7 @@ class TangptLottery(_PluginBase):
             f"{ev_icon} 期望收益：{ev:+.1f}/次"
         )
         if ev_detail:
-            text += f"\n📋 EV明细：{ev_detail}"
+            text += f"\n\n📊 EV分析\n{ev_detail}"
         if jackpot_hit:
             text += "\n🎊 Jackpot!!!"
         if jackpot_pool > 0:
