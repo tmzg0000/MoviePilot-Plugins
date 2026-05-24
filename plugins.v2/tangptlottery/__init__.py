@@ -26,7 +26,7 @@ class TangptLottery(_PluginBase):
     plugin_name = "躺平自动抽奖助手"
     plugin_desc = "躺平站点自动抽奖+老虎机，支持定时抽奖、中奖通知、期望值分析、获取站点Cookie等功能。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.6.1"
+    plugin_version = "1.6.2"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "tangptlottery_"
@@ -412,7 +412,7 @@ class TangptLottery(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 10},
+                                "props": {"cols": 12},
                                 "content": [
                                     {
                                         "component": "VTextarea",
@@ -421,32 +421,7 @@ class TangptLottery(_PluginBase):
                                             "label": "躺平站点 Cookie",
                                             "rows": 3,
                                             "placeholder": "填写包含 c_secure_pass 的完整 Cookie",
-                                            "hint": "留空时读取站点管理中的躺平站点 Cookie；填写后仅本插件使用，不会修改站点 Cookie"
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 2,
-                                    "class": "d-flex align-center"
-                                },
-                                "content": [
-                                    {
-                                        "component": "VBtn",
-                                        "props": {
-                                            "color": "success",
-                                            "variant": "tonal",
-                                            "text": "获取Cookie",
-                                            "state": "cookie"
-                                        },
-                                        "events": {
-                                            "click": {
-                                                "api": "plugin/TangptLottery/get_cookie",
-                                                "method": "get"
-                                            }
+                                            "hint": "打开配置页时自动从站点管理获取躺平站点Cookie；填写后仅本插件使用，不会修改站点Cookie"
                                         }
                                     }
                                 ]
