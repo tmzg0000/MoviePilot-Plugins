@@ -217,7 +217,6 @@ class CrossSeedSkip(_PluginBase):
             self._torrentpath = config.get("torrentpath") or ""
             self._torrentpaths = self._torrentpath.strip().split(",") if self._torrentpath.strip() else []
             self._sites = config.get("sites") or []
-            self._select_all_sites = config.get("select_all_sites") or False
             self._notify = config.get("notify")
             self._nolabels = config.get("nolabels")
             self._nopaths = config.get("nopaths")
@@ -254,9 +253,6 @@ class CrossSeedSkip(_PluginBase):
                     proxy=site.get("proxy"),
                 )
             self._sites = [site.id for site in all_site_cs_info_map.values() if site.id in self._sites]
-
-            if self._select_all_sites:
-                self._sites = [site.id for site in all_site_cs_info_map.values()]
 
             site_names = [site.name for site in all_site_cs_info_map.values() if site.id in self._sites]
 
@@ -346,6 +342,24 @@ class CrossSeedSkip(_PluginBase):
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
         return []
+
+    def get_api(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "path": "/get_all_sites",
+                "endpoint": self.get_all_sites_api,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取所有可用站点",
+                "description": "获取MoviePilot站点管理中的所有站点ID，用于一键全选辅种站点。"
+            }
+        ]
+
+    def get_all_sites_api(self):
+        all_site_ids = [site.id for site in SiteOper().list_order_by_pri()]
+        for site in self.__custom_sites():
+            all_site_ids.append(site.get("id"))
+        return {"sites": all_site_ids}
 
     def get_service(self) -> List[Dict[str, Any]]:
         if self.get_state():
@@ -439,11 +453,19 @@ class CrossSeedSkip(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VSwitch',
+                                        'component': 'VBtn',
                                         'props': {
-                                            'model': 'select_all_sites',
-                                            'label': '全选所有站点',
-                                            'hint': '启用后将自动使用全部可用站点，忽略下方的单独选择'
+                                            'color': 'primary',
+                                            'variant': 'tonal',
+                                            'text': '全选所有站点',
+                                            'block': True,
+                                            'class': 'mb-3'
+                                        },
+                                        'events': {
+                                            'click': {
+                                                'api': 'plugin/CrossSeedSkip/get_all_sites',
+                                                'method': 'get'
+                                            }
                                         }
                                     }
                                 ]
@@ -732,7 +754,6 @@ class CrossSeedSkip(_PluginBase):
             "downloaders": self._downloaders,
             "torrentpath": self._torrentpath,
             "sites": self._sites,
-            "select_all_sites": self._select_all_sites,
             "notify": self._notify,
             "nolabels": self._nolabels,
             "nopaths": self._nopaths,
