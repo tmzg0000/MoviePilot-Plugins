@@ -3,11 +3,12 @@
     "name": "青蛙辅种助手跳验版",
     "description": "参考ReseedPuppy和IYUU辅种插件实现自动辅种，支持跳过哈希校验",
     "labels": "做种",
-    "version": "3.0.3",
+    "version": "3.0.4",
     "icon": "qingwa.png",
     "author": "Schalkiii",
     "level": 1,
     "history": {
+      "v3.0.4": "全选所有站点按钮改为VBtn+API模式，支持一键全选",
       "v3.0.3": "添加跳过哈希校验选项，tag改为青蛙辅种",
       "v3.0.2": "更新依赖库",
       "v3.0.1": "遗漏了一个私有属性",

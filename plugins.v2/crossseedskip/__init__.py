@@ -168,7 +168,7 @@ class CrossSeedSkip(_PluginBase):
     plugin_name = "青蛙辅种助手跳验版"
     plugin_desc = "参考ReseedPuppy和IYUU辅种插件实现自动辅种，支持跳过哈希校验"
     plugin_icon = "qingwa.png"
-    plugin_version = "3.0.3"
+    plugin_version = "3.0.4"
     plugin_author = "Schalkiii"
     author_url = "https://qingwapt.com/"
     plugin_config_prefix = "crossseedskip_"
