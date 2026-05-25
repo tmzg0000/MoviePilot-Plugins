@@ -38,11 +38,12 @@
     "name": "藏宝阁PT任务领取",
     "description": "每月定时为藏宝阁PT领取任务，领取后推送飞书消息通知。",
     "labels": "站点,任务",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "signin.png",
     "author": "schalkiii",
     "level": 1,
     "history": {
+      "v1.0.1": "修复stop_service未清除旧任务导致修改cron不生效的问题",
       "v1.0.0": "初始版本，支持藏宝阁PT每月定时任务领取"
     }
   },
@@ -50,11 +51,12 @@
     "name": "NovaHD任务领取",
     "description": "每月定时为NovaHD领取任务，领取后推送飞书消息通知。",
     "labels": "站点,任务",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "signin.png",
     "author": "schalkiii",
     "level": 1,
     "history": {
+      "v1.0.1": "修复stop_service未清除旧任务导致修改cron不生效的问题",
       "v1.0.0": "初始版本，支持NovaHD每月定时任务领取"
     }
   },

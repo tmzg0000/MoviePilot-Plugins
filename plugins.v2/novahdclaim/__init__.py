@@ -11,6 +11,7 @@ from app.core.event import Event, eventmanager
 from app.db.site_oper import SiteOper
 from app.log import logger
 from app.plugins import _PluginBase
+from app.scheduler import Scheduler
 from app.schemas import NotificationType
 from app.schemas.types import EventType
 
@@ -21,7 +22,7 @@ class NovaHDClaim(_PluginBase):
     plugin_name = "NovaHD任务领取"
     plugin_desc = "每月定时为NovaHD领取任务，领取后推送飞书消息通知。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.1"
     plugin_author = "schalkiii"
     author_url = ""
     plugin_config_prefix = "novahdclaim_"
@@ -41,6 +42,7 @@ class NovaHDClaim(_PluginBase):
     _lock = threading.Lock()
 
     def init_plugin(self, config: dict = None):
+        self.stop_service()
         config = config or {}
         site_cookie = self.__get_site_cookie()
         self._enabled = bool(config.get("enabled", False))
@@ -489,4 +491,7 @@ class NovaHDClaim(_PluginBase):
         return status_map.get(status, str(status)) if status else "未知"
 
     def stop_service(self):
-        pass
+        try:
+            Scheduler().remove_plugin_job("NovaHDClaim")
+        except Exception:
+            pass
