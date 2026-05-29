@@ -24,5 +24,19 @@
             "v0.2": "测试",
             "v0.1": "自定义字体"
         }
+    },
+    "CangbaoGeClaimDelayed": {
+    "name": "藏宝阁PT任务领取延时版",
+    "description": "支持标准Cron或按固定间隔(如每3天)为藏宝阁PT领取任务，领取后推送消息通知。",
+    "labels": "站点,任务",
+    "version": "1.1.0",
+    "icon": "signin.png",
+    "author": "schalkiii",
+    "level": 1,
+    "history": {
+      "v1.1.0": "新增功能：支持 interval 间隔语法(如每3天执行)，修改插件名称与类名避免冲突",
+      "v1.0.1": "修复stop_service未清除旧任务导致修改cron不生效的问题",
+      "v1.0.0": "初始版本，支持藏宝阁PT每月定时任务领取"
     }
+  }
 }
