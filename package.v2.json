@@ -25,7 +25,7 @@
             "v0.1": "自定义字体"
         }
     },
-    "CangbaoGeClaimDelayed": {
+    "cangbaogeclaimdelayed": {
     "name": "藏宝阁PT任务领取延时版",
     "description": "支持标准Cron或按固定间隔(如每3天)为藏宝阁PT领取任务，领取后推送消息通知。",
     "labels": "站点,任务",
