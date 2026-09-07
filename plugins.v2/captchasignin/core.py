@@ -166,9 +166,10 @@ def build_query(rule: Mapping[str, Any]) -> str:
              if image else "solve(type:cloudflare,timeout:$solveTimeout)" if rule["mode"] == "cloudflare"
              else "evaluate(content:\"'skipped'\"){value}")
     extra = "$captchaSelector:String! $captchaInputSelector:String!" if image else ""
-    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $wait:Float! $solveTimeout:Float! %s) {
+    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $beforeWait:Float! $wait:Float! $solveTimeout:Float! %s) {
       cookies(cookies:$cookies){cookies{name}}
       goto(url:$url,waitUntil:networkIdle){status}
+      waitBefore:waitForTimeout(time:$beforeWait){time}
       before:html{html}
       solve:%s{found solved time}
       submit:evaluate(content:$submit){value}
@@ -211,7 +212,7 @@ class BrowserlessSigner:
             "cookies": cookies, "url": target_url,
             "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
                                      rule.get("captcha_input_selector")),
-            "wait": 3500, "solveTimeout": 60000,
+            "beforeWait": 2000, "wait": 3500, "solveTimeout": 60000,
         }
         if rule["mode"] == "image":
             variables.update({"captchaSelector": rule["captcha_selector"], "captchaInputSelector": rule["captcha_input_selector"]})
@@ -231,8 +232,13 @@ class BrowserlessSigner:
         if data.get("goto", {}).get("status") not in range(200, 400):
             return SignResult("failed", "打开签到页失败")
         solve = data.get("solve") or {}
+        if rule["mode"] == "image" and not solve.get("found"):
+            return SignResult("failed", "未找到图片验证码；请检查验证码图片选择器")
         if rule["mode"] != "open_page" and solve.get("found") and not solve.get("solved"):
             return SignResult("failed", "找到验证码但未能完成验证")
+        submitted = (data.get("submit") or {}).get("value")
+        if rule["mode"] == "image" and submitted in (False, "false"):
+            return SignResult("failed", "验证码未自动填入输入框，未发送签到请求")
         result = classify(str((data.get("after") or {}).get("html") or ""), rule)
         if result.status == "failed":
             before = classify(str((data.get("before") or {}).get("html") or ""), rule)
