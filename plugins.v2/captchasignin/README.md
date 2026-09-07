@@ -6,7 +6,7 @@ MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已�
 
 ## Browserless 配置
 
-- 默认云端地址：`https://production-sfo.browserless.io`
+- 默认云端地址：`https://production-sfo.browserless.io`（配置页会自动填入，只需填写 Token）。
 - 地址也可填写自建 Browserless 的服务根地址，或完整的 `/stealth/bql` 地址；插件会自动补齐所需路径。
 - 首次使用请先[注册 Browserless 账号](https://www.browserless.io/signup/email?plan=free)，登录[账户控制台](https://browserless.io/account/)，在 **API Key** 区域复制 Token 后填入插件设置。
 
@@ -24,4 +24,8 @@ MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已�
 }
 ```
 
-`mode` 支持 `image`、`cloudflare` 和 `open_page`。Cookie、Browserless Token 与验证码内容均不会写入日志或签到历史。
+`mode` 支持 `image`、`cloudflare` 和 `open_page`。`cloudflare` 使用 Browserless 自动识别，兼容 Cloudflare 页面挑战与 Turnstile；若站点在 MoviePilot 中设置了 User-Agent，插件会在 Browserless 会话中复用它。Cookie、Browserless Token 与验证码内容均不会写入日志或签到历史。
+
+## 结果页
+
+结果页按 `AutoSignIn` 的信息层级展示本次处理站点数、成功/已签到数、待处理数，以及每个站点的状态和原因。保存配置后可勾选“保存后立即执行一次”进行连通性验证。

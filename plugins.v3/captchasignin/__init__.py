@@ -21,14 +21,14 @@ except ImportError:  # MoviePilot V2
 
 from app.schemas import NotificationType
 
-from .core import BrowserlessSigner, SignResult, parse_rules, resolve_rule
+from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, SignResult, parse_rules, resolve_rule
 
 
 class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.5"
+    plugin_version = "1.0.6"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -40,7 +40,7 @@ class CaptchaSignIn(_PluginBase):
     _cron = "15 8 * * *"
     _site_ids: List[int] = []
     _concurrency = 2
-    _browserless_url = ""
+    _browserless_url = DEFAULT_BROWSERLESS_URL
     _browserless_token = ""
     _site_rules = ""
     _run_once = False
@@ -52,7 +52,7 @@ class CaptchaSignIn(_PluginBase):
         self._cron = str(config.get("cron") or "15 8 * * *")
         self._site_ids = [int(value) for value in config.get("site_ids", []) if str(value).isdigit()]
         self._concurrency = max(1, min(int(config.get("concurrency") or 2), 5))
-        self._browserless_url = str(config.get("browserless_url") or "").strip()
+        self._browserless_url = str(config.get("browserless_url") or DEFAULT_BROWSERLESS_URL).strip()
         self._browserless_token = str(config.get("browserless_token") or "").strip()
         self._site_rules = str(config.get("site_rules") or "")
         self._run_once = bool(config.get("run_once", False))
@@ -91,29 +91,69 @@ class CaptchaSignIn(_PluginBase):
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         sites = SiteOper().list_order_by_pri()
         options = [{"title": site.name, "value": site.id} for site in sites if getattr(site, "cookie", None)]
-        fields = [
-            ("enabled", "VSwitch", "启用插件"), ("notify", "VSwitch", "签到后发送通知"),
-            ("run_once", "VSwitch", "保存后立即执行一次"), ("cron", "VTextField", "Cron（5 位）"),
-            ("concurrency", "VTextField", "并发数（1-5）"),
-            ("browserless_url", "VTextField", "Browserless 地址"),
-            ("browserless_token", "VTextField", "Browserless Token"),
-        ]
-        content = [{"component": "VSelect", "props": {"model": "site_ids", "label": "签到站点", "items": options, "multiple": True, "chips": True}}]
-        for model, component, label in fields:
-            props: Dict[str, Any] = {"model": model, "label": label}
-            if model == "browserless_token":
-                props.update({"type": "password", "persistent-hint": True, "hint": "仅保存在 MoviePilot 插件配置中，不写入日志"})
-            content.append({"component": component, "props": props})
-        content.append({"component": "VTextarea", "props": {"model": "site_rules", "label": "自定义站点规则 JSON（可留空）", "rows": 10,
-            "hint": "键使用域名或站点 ID；mode 为 image/cloudflare/open_page。OpenCD、包子和三类 CF 站点已内置。"}})
-        return [{"component": "VForm", "content": content}], self._config()
+        return [{"component": "VForm", "content": [
+            {"component": "VRow", "content": [
+                {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSwitch", "props": {"model": "enabled", "label": "启用插件"}}]},
+                {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSwitch", "props": {"model": "notify", "label": "签到后发送通知"}}]},
+                {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSwitch", "props": {"model": "run_once", "label": "保存后立即执行一次"}}]},
+            ]},
+            {"component": "VRow", "content": [
+                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VCronField", "props": {"model": "cron", "label": "执行周期", "placeholder": "5 位 Cron；例如 15 8 * * *"}}]},
+                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "concurrency", "label": "并发数", "type": "number", "min": 1, "max": 5, "hint": "同时处理 1–5 个站点，建议 2", "persistent-hint": True}}]},
+            ]},
+            {"component": "VSelect", "props": {"model": "site_ids", "label": "签到站点", "items": options, "multiple": True, "chips": True, "hint": "仅显示已在 MoviePilot 保存 Cookie 的站点", "persistent-hint": True}},
+            {"component": "VDivider", "props": {"class": "my-4"}},
+            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact", "text": "Browserless Token 仅保存在 MoviePilot 插件配置中，签到记录、日志和通知均不会包含 Token、Cookie 或验证码内容。"}},
+            {"component": "VRow", "content": [
+                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "browserless_url", "label": "Browserless 地址", "placeholder": DEFAULT_BROWSERLESS_URL, "hint": "可填写服务根地址或完整 /stealth/bql 地址", "persistent-hint": True}}]},
+                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "browserless_token", "label": "Browserless Token", "type": "password", "persistent-hint": True, "hint": "必填；不会写入日志"}}]},
+            ]},
+            {"component": "VTextarea", "props": {"model": "site_rules", "label": "自定义站点规则 JSON（可留空）", "rows": 10, "hint": "键使用域名或站点 ID；mode 为 image、cloudflare 或 open_page。内置 OpenCD、包子与 Cloudflare 站点规则。", "persistent-hint": True}},
+        ]}], self._config()
 
     def get_page(self) -> List[dict]:
         records = self.get_data("latest") or []
-        return [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "text": "最近一次签到结果"}},
-                {"component": "VTable", "content": [{"component": "tbody", "content": [
-                    {"component": "tr", "content": [{"component": "td", "text": str(row.get("site", ""))},
-                    {"component": "td", "text": str(row.get("status", ""))}, {"component": "td", "text": str(row.get("message", ""))}]} for row in records]}]}]
+        total = len(records)
+        success = sum(row.get("status") in {"success", "already"} for row in records)
+        failed = total - success
+        if not records:
+            return [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "text": "暂无签到记录；保存配置后使用“立即执行一次”开始签到。", "prepend-icon": "mdi-information"}}]
+        rows = []
+        for row in records:
+            meta = self._status_meta(str(row.get("status") or ""))
+            rows.append({"component": "tr", "content": [
+                {"component": "td", "text": str(row.get("site") or "未知站点")},
+                {"component": "td", "content": [{"component": "VChip", "props": {"size": "x-small", "variant": "tonal", "color": meta["color"], "prepend-icon": meta["icon"]}, "text": meta["label"]}]},
+                {"component": "td", "text": str(row.get("message") or "-")},
+            ]})
+        return [
+            {"component": "style", "text": ".captchasignin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.captchasignin-stat{padding:12px}.captchasignin-stat__label{color:rgba(var(--v-theme-on-surface),.62);font-size:.78rem}.captchasignin-stat__value{margin-top:6px;font-size:1.35rem;font-weight:700}.captchasignin-table-wrap{overflow-x:auto;border:1px solid rgba(var(--v-theme-on-surface),.08);border-radius:8px}.captchasignin-table{min-width:620px}.captchasignin-table th,.captchasignin-table td{padding:8px!important}"},
+            {"component": "div", "props": {"class": "captchasignin-summary"}, "content": [
+                self._stat("本次站点", str(total), "已选择并完成处理", "info", "mdi-web"),
+                self._stat("成功或已签到", f"{success}/{total}", "无需重复签到", "success", "mdi-check-circle"),
+                self._stat("需要处理", str(failed), "请查看失败原因或更新 Cookie", "error" if failed else "success", "mdi-alert-circle-outline"),
+            ]},
+            {"component": "div", "props": {"class": "captchasignin-table-wrap mt-3"}, "content": [{"component": "VTable", "props": {"density": "compact", "hover": True, "class": "captchasignin-table"}, "content": [
+                {"component": "thead", "content": [{"component": "tr", "content": [{"component": "th", "text": "站点"}, {"component": "th", "text": "状态"}, {"component": "th", "text": "结果"}]}]},
+                {"component": "tbody", "content": rows},
+            ]}]},
+        ]
+
+    @staticmethod
+    def _status_meta(status: str) -> Dict[str, str]:
+        if status == "success":
+            return {"label": "签到成功", "color": "success", "icon": "mdi-check-circle"}
+        if status == "already":
+            return {"label": "今日已签到", "color": "info", "icon": "mdi-calendar-check"}
+        return {"label": "签到失败", "color": "error", "icon": "mdi-alert-circle"}
+
+    @staticmethod
+    def _stat(label: str, value: str, hint: str, color: str, icon: str) -> Dict[str, Any]:
+        return {"component": "div", "props": {"class": "captchasignin-stat app-card-shell app-card-colorful", "style": f"--app-card-accent-rgb: var(--v-theme-{color});"}, "content": [
+            {"component": "div", "props": {"class": "captchasignin-stat__label"}, "text": label},
+            {"component": "div", "props": {"class": f"captchasignin-stat__value text-{color}"}, "text": value},
+            {"component": "div", "props": {"class": "text-caption text-medium-emphasis mt-1"}, "text": hint},
+        ]}
 
     def run_sign_in(self) -> None:
         if not self._browserless_url or not self._browserless_token:

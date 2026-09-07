@@ -60,6 +60,9 @@ class SignResult:
     message: str
 
 
+DEFAULT_BROWSERLESS_URL = "https://production-sfo.browserless.io"
+
+
 def normalize_host(url: str) -> str:
     return (urllib.parse.urlparse(url).hostname or "").lower().removeprefix("www.").rstrip(".")
 
@@ -163,15 +166,24 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
     })()""" % (input_json, input_json, selector_json)
 
 
-def build_query(rule: Mapping[str, Any]) -> str:
+def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> str:
+    """Build one BrowserQL operation for a site check-in.
+
+    Browserless recommends automatic captcha detection for Cloudflare and
+    Turnstile.  Restricting ``solve`` to ``cloudflare`` made a Turnstile page
+    depend on Browserless classifying it as that one specific type.
+    """
     image = rule["mode"] == "image"
     solve = ("solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout)"
-             if image else "solve(type:cloudflare,timeout:$solveTimeout)" if rule["mode"] == "cloudflare"
+             if image else "solve(timeout:$solveTimeout)" if rule["mode"] == "cloudflare"
              else "evaluate(content:\"'skipped'\"){value}")
     extra = "$captchaSelector:String! $captchaInputSelector:String!" if image else ""
+    set_user_agent = "userAgent(userAgent:$userAgent){time}" if user_agent else ""
+    user_agent_variable = " $userAgent:String!" if user_agent else ""
     return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $beforeWait:Float! $wait:Float! $solveTimeout:Float! %s) {
+      %s
       cookies(cookies:$cookies){cookies{name}}
-      goto(url:$url,waitUntil:networkIdle){status}
+      goto(url:$url,waitUntil:domContentLoaded){status}
       waitBefore:waitForTimeout(time:$beforeWait){time}
       before:html{html}
       solve:%s{found solved time}
@@ -179,7 +191,7 @@ def build_query(rule: Mapping[str, Any]) -> str:
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
-    }""" % (extra, solve)
+    }""" % (extra + user_agent_variable, set_user_agent, solve)
 
 
 def page_text(html: str) -> str:
@@ -244,6 +256,7 @@ class BrowserlessSigner:
         cookies = cookie_objects(cookie, target_url)
         if not cookies:
             return SignResult("failed", "站点 Cookie 格式无效")
+        user_agent = str(site.get("ua") or "").strip()
         variables: Dict[str, Any] = {
             "cookies": cookies, "url": target_url,
             "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
@@ -252,7 +265,9 @@ class BrowserlessSigner:
         }
         if rule["mode"] == "image":
             variables.update({"captchaSelector": rule["captcha_selector"], "captchaInputSelector": rule["captcha_input_selector"]})
-        payload = json.dumps({"query": build_query(rule), "operationName": "CheckIn", "variables": variables}).encode()
+        if user_agent:
+            variables["userAgent"] = user_agent
+        payload = json.dumps({"query": build_query(rule, user_agent), "operationName": "CheckIn", "variables": variables}).encode()
         request = urllib.request.Request(self.endpoint, data=payload, headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
