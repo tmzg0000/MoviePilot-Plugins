@@ -3,11 +3,11 @@
     "name": "验证码站点签到",
     "description": "通过 Browserless 自动完成 PT 图片验证码、Cloudflare 与 Turnstile 签到。",
     "labels": "站点,签到",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "signin.png",
     "author": "tmzg0000",
     "level": 2,
     "system_version": ">=3.0.0",
-    "history": {"v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"}
+    "history": {"v1.0.1": "修复 Browserless 签到请求中未使用的 GraphQL 变量导致执行失败。", "v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"}
   }
 }

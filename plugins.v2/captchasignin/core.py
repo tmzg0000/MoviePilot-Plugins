@@ -166,7 +166,7 @@ def build_query(rule: Mapping[str, Any]) -> str:
              if image else "solve(type:cloudflare,timeout:$solveTimeout)" if rule["mode"] == "cloudflare"
              else "evaluate(content:\"'skipped'\"){value}")
     extra = "$captchaSelector:String! $captchaInputSelector:String!" if image else ""
-    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $selector:String! $submit:String! $wait:Float! $solveTimeout:Float! %s) {
+    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $wait:Float! $solveTimeout:Float! %s) {
       cookies(cookies:$cookies){cookies{name}}
       goto(url:$url,waitUntil:networkIdle){status}
       before:html{html}
@@ -208,7 +208,7 @@ class BrowserlessSigner:
         if not cookies:
             return SignResult("failed", "站点 Cookie 格式无效")
         variables: Dict[str, Any] = {
-            "cookies": cookies, "url": target_url, "selector": rule["submit_selector"],
+            "cookies": cookies, "url": target_url,
             "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
                                      rule.get("captcha_input_selector")),
             "wait": 3500, "solveTimeout": 60000,
