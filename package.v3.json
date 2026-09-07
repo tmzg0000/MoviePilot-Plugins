@@ -3,11 +3,11 @@
     "name": "验证码站点签到",
     "description": "通过 Browserless 自动完成 PT 图片验证码、Cloudflare 与 Turnstile 签到。",
     "labels": "站点,签到",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "icon": "signin.png",
     "author": "tmzg0000",
     "level": 2,
     "system_version": ">=3.0.0",
-    "history": {"v1.0.4": "修复 Cloudflare 签到的空验证码选择器错误，放宽包子验证码定位，并改进结果判定。", "v1.0.3": "解析 OpenCD AJAX 签到返回 JSON，并输出站点处理日志。", "v1.0.2": "等待图片验证码加载后再识别；验证码未识别或未填入时给出明确原因。", "v1.0.1": "修复 Browserless 签到请求中未使用的 GraphQL 变量导致执行失败。", "v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"}
+    "history": {"v1.0.5": "包子验证码改为按含 imagestring 输入框的表单定位，兼容无 CAPTCHA alt 属性的页面。", "v1.0.4": "修复 Cloudflare 签到的空验证码选择器错误，放宽包子验证码定位，并改进结果判定。", "v1.0.3": "解析 OpenCD AJAX 签到返回 JSON，并输出站点处理日志。", "v1.0.2": "等待图片验证码加载后再识别；验证码未识别或未填入时给出明确原因。", "v1.0.1": "修复 Browserless 签到请求中未使用的 GraphQL 变量导致执行失败。", "v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"}
   }
 }

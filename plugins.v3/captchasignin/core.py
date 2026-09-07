@@ -31,7 +31,7 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         # The form action differs between NexusPHP versions (for example, it
         # may include a leading slash or query parameters), so do not bind the
         # captcha controls to an exact action string.
-        "captcha_selector": "img[alt='CAPTCHA']",
+        "captcha_selector": "form:has(input[name='imagestring']) img",
         "captcha_input_selector": "input[name='imagestring']",
         "submit_selector": "input[type='submit']",
         "already_keywords": ["签到成功"],
