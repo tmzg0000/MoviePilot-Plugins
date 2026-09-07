@@ -1,0 +1,13 @@
+{
+  "CaptchaSignIn": {
+    "name": "验证码站点签到",
+    "description": "通过 Browserless 自动完成 PT 图片验证码、Cloudflare 与 Turnstile 签到。",
+    "labels": "站点,签到",
+    "version": "1.0.0",
+    "icon": "signin.png",
+    "author": "tmzg0000",
+    "level": 2,
+    "system_version": ">=3.0.0",
+    "history": {"v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"}
+  }
+}
