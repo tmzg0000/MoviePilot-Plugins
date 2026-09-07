@@ -28,9 +28,12 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
     "p.t-baozi.cc": {
         "mode": "image",
         "path": "/attendance.php",
-        "captcha_selector": "form[action='attendance.php'] img[alt='CAPTCHA']",
-        "captcha_input_selector": "form[action='attendance.php'] input[name='imagestring']",
-        "submit_selector": "form[action='attendance.php'] input[type='submit']",
+        # The form action differs between NexusPHP versions (for example, it
+        # may include a leading slash or query parameters), so do not bind the
+        # captcha controls to an exact action string.
+        "captcha_selector": "img[alt='CAPTCHA']",
+        "captcha_input_selector": "input[name='imagestring']",
+        "submit_selector": "input[type='submit']",
         "already_keywords": ["签到成功"],
     },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
@@ -144,12 +147,12 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
     selector_json = json.dumps(selector)
     input_json = json.dumps(captcha_input or "")
     if method == "click":
-        return """(() => { const input = document.querySelector(%s);
+        return """(() => { const input = %s ? document.querySelector(%s) : null;
           if (input && !input.value.trim()) return false;
           const button = document.querySelector(%s); if (!button) return false; button.click(); return true;
-        })()""" % (input_json, selector_json)
+        })()""" % (input_json, input_json, selector_json)
     return """(async () => {
-      const input = document.querySelector(%s); if (input && !input.value.trim()) return false;
+      const input = %s ? document.querySelector(%s) : null; if (input && !input.value.trim()) return false;
       const target = document.querySelector(%s); const form = target && (target.form || target);
       if (!(form instanceof HTMLFormElement)) throw new Error('未找到签到表单');
       const action = new URL(form.action, location.href);
@@ -157,7 +160,7 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
       const data = new FormData(form); if (target.name && !target.disabled) data.append(target.name, target.value);
       const response = await fetch(action.href, {method: form.method || 'POST', credentials:'same-origin', body:data});
       window.__captchasignin_response = {status:response.status, text:await response.text()}; return response.status;
-    })()""" % (input_json, selector_json)
+    })()""" % (input_json, input_json, selector_json)
 
 
 def build_query(rule: Mapping[str, Any]) -> str:
@@ -179,13 +182,18 @@ def build_query(rule: Mapping[str, Any]) -> str:
     }""" % (extra, solve)
 
 
+def page_text(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
 def compact_html(html: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()[:240]
+    return page_text(html)[:240]
 
 
 def classify(html: str, rule: Mapping[str, Any]) -> SignResult:
-    text = compact_html(html)
-    lower = text.lower()
+    full_text = page_text(html)
+    text = full_text[:240]
+    lower = full_text.lower()
     if any(word.lower() in lower for word in LOGIN_WORDS) and "logout" not in lower:
         return SignResult("failed", "Cookie 无效或已过期")
     if any(word.lower() in lower for word in rule.get("already_keywords", [])) or any(word in lower for word in ALREADY_WORDS):
