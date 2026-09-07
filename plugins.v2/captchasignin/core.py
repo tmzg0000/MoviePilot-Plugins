@@ -174,6 +174,7 @@ def build_query(rule: Mapping[str, Any]) -> str:
       solve:%s{found solved time}
       submit:evaluate(content:$submit){value}
       waitAfter:waitForTimeout(time:$wait){time}
+      response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
     }""" % (extra, solve)
 
@@ -192,6 +193,33 @@ def classify(html: str, rule: Mapping[str, Any]) -> SignResult:
     if any(word in lower for word in SUCCESS_WORDS):
         return SignResult("success", text or "签到成功")
     return SignResult("failed", text or "未识别到签到成功结果")
+
+
+def classify_ajax_response(value: Any, rule: Mapping[str, Any]) -> Optional[SignResult]:
+    if not value or value == "null":
+        return None
+    try:
+        response = json.loads(str(value))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(response, Mapping):
+        return None
+    status = response.get("status")
+    if isinstance(status, int) and not 200 <= status < 400:
+        return SignResult("failed", "签到请求失败（HTTP %s）" % status)
+    text = str(response.get("text") or "")
+    success_json = rule.get("success_json") or {}
+    if success_json:
+        try:
+            body = json.loads(text)
+            current: Any = body
+            for key in str(success_json.get("field") or "").lstrip("/").split("/"):
+                current = current[key]
+            if str(current) in {str(item) for item in success_json.get("values", [])}:
+                return SignResult("success", "签到成功")
+        except (KeyError, TypeError, ValueError):
+            pass
+    return classify(text, rule)
 
 
 class BrowserlessSigner:
@@ -239,6 +267,9 @@ class BrowserlessSigner:
         submitted = (data.get("submit") or {}).get("value")
         if rule["mode"] == "image" and submitted in (False, "false"):
             return SignResult("failed", "验证码未自动填入输入框，未发送签到请求")
+        ajax_result = classify_ajax_response((data.get("response") or {}).get("value"), rule)
+        if ajax_result:
+            return ajax_result
         result = classify(str((data.get("after") or {}).get("html") or ""), rule)
         if result.status == "failed":
             before = classify(str((data.get("before") or {}).get("html") or ""), rule)

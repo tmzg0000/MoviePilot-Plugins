@@ -28,7 +28,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.2"
+    plugin_version = "1.0.3"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -129,6 +129,7 @@ class CaptchaSignIn(_PluginBase):
         if not selected:
             self._finish([{"site": "配置", "status": "failed", "message": "未选择可用的 MoviePilot 站点"}])
             return
+        logger.info("验证码站点签到：开始处理 %s 个站点", len(selected))
         signer = BrowserlessSigner(self._browserless_url, self._browserless_token)
         with ThreadPoolExecutor(max_workers=min(self._concurrency, len(selected))) as executor:
             results = list(executor.map(lambda site: self._sign_one(site, rules, signer), selected))
@@ -140,6 +141,8 @@ class CaptchaSignIn(_PluginBase):
 
     def _sign_one(self, site: Any, rules: Dict[str, Dict[str, Any]], signer: BrowserlessSigner) -> Dict[str, str]:
         info = self._site_dict(site)
+        site_name = str(info.get("name") or info.get("url") or "未知站点")
+        logger.info("验证码站点签到：开始 %s", site_name)
         try:
             outcome: SignResult = signer.sign(info, resolve_rule(info, rules))
         except ValueError as error:
@@ -147,7 +150,8 @@ class CaptchaSignIn(_PluginBase):
         except Exception:
             logger.exception("验证码站点签到失败：%s", info.get("name"))
             outcome = SignResult("failed", "签到执行出现未预期错误")
-        return {"site": str(info.get("name") or info.get("url") or "未知站点"), "status": outcome.status, "message": outcome.message}
+        logger.info("验证码站点签到：完成 %s（%s）", site_name, outcome.status)
+        return {"site": site_name, "status": outcome.status, "message": outcome.message}
 
     def _finish(self, results: List[Dict[str, str]]) -> None:
         self.save_data("latest", results)
