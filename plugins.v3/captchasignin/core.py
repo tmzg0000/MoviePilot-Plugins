@@ -188,9 +188,9 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     depend on Browserless classifying it as that one specific type.
     """
     image = rule["mode"] == "image"
-    solve = ("solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout)"
-             if image else "solve(timeout:$solveTimeout)" if rule["mode"] == "cloudflare"
-             else "evaluate(content:\"'skipped'\"){value}")
+    solve = ("solve:solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout){found solved time}"
+             if image else "solve:solve(timeout:$solveTimeout){found solved time}" if rule["mode"] == "cloudflare"
+             else "solve:evaluate(content:\"'skipped'\"){value}")
     extra = "$captchaSelector:String! $captchaInputSelector:String!" if image else ""
     set_user_agent = "userAgent(userAgent:$userAgent){time}" if user_agent else ""
     user_agent_variable = " $userAgent:String!" if user_agent else ""
@@ -200,7 +200,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       goto(url:$url,waitUntil:domContentLoaded){status}
       waitBefore:waitForTimeout(time:$beforeWait){time}
       before:html{html}
-      solve:%s{found solved time}
+      %s
       submit:evaluate(content:$submit){value}
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
