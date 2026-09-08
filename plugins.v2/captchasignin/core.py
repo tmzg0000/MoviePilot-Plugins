@@ -42,6 +42,15 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "submit_selector": "input[type='submit'], button[type='submit']",
         "submit_text": "立即签到",
     },
+    "pt.luckpt.de": {
+        "mode": "open_page",
+        "path": "/medal_collection.php",
+        "submit_selector": ".claim-bar button.claim-reward[data-type='bonus_daily']",
+        # BrowserQL's native click does not reliably dispatch this site's
+        # JavaScript handler, so click from the page context instead.
+        "submit_method": "dom_click",
+        "submit_text": "领取 幸运星 ×1000",
+    },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
     "mua.xloli.cc": {
         "mode": "cloudflare",
@@ -163,7 +172,7 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
         if (found) return found; }
       return document.querySelector(%s);
     })()""" % (text_json, selector_json)
-    if method == "click":
+    if method in {"click", "dom_click"}:
         return """(() => { const input = %s ? document.querySelector(%s) : null;
           if (input && !input.value.trim()) return false;
           const button = %s; if (!button) return false; button.click(); return true;

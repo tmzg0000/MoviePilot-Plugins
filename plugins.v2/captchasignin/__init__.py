@@ -28,7 +28,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.12"
+    plugin_version = "1.0.13"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"

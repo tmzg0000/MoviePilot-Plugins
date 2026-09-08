@@ -37,6 +37,18 @@ def test_open_page_rule_generates_valid_evaluate_response_shape():
     assert "submit:click(selector:$selector){selector time}" in query
 
 
+def test_luckpt_uses_page_context_click_with_its_text_fallback():
+    rule = core.resolve_rule({"url": "https://pt.luckpt.de", "id": "luckpt"}, {})
+    assert rule["submit_method"] == "dom_click"
+    query = core.build_query(rule)
+    assert "$submit:String!" in query
+    assert "submit:evaluate(content:$submit){value}" in query
+    assert "submit:click(selector:$selector)" not in query
+    script = core._submit_script(rule["submit_selector"], rule["submit_method"], submit_text=rule["submit_text"])
+    assert "button.click()" in script
+    assert json.dumps(rule["submit_text"]) in script
+
+
 def test_ajax_rule_declares_submit_once_and_does_not_declare_selector():
     query = core.build_query({"mode": "image", "submit_method": "ajax"})
     assert query.count("$submit:String!") == 1
