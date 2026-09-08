@@ -33,6 +33,12 @@ def test_open_page_rule_generates_valid_evaluate_response_shape():
     assert "solve:evaluate(content:\"'skipped'\"){value}" in query
     assert "{value}{found solved time}" not in query
     assert "$solveTimeout" not in query
+    assert "submit:click(selector:$selector){selector time}" in query
+
+
+def test_page_script_text_does_not_count_as_success():
+    result = core.classify("<script>const success = true;</script><p>勋章中心</p>", {})
+    assert result.status == "failed"
 
 
 def test_image_rule_keeps_selector_solver_and_optional_site_user_agent():

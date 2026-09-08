@@ -55,7 +55,7 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
     },
 }
 
-SUCCESS_WORDS = ("签到成功", "簽到成功", "成功签到", "打卡成功", "success")
+SUCCESS_WORDS = ("签到成功", "簽到成功", "成功签到", "打卡成功")
 ALREADY_WORDS = ("已签到", "已经签到", "今日已签", "今天已签", "已打卡", "already")
 LOGIN_WORDS = ("用户登录", "會員登入", "login")
 
@@ -189,6 +189,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     """
     image = rule["mode"] == "image"
     needs_solver = rule["mode"] in {"image", "cloudflare"}
+    native_click = str(rule.get("submit_method") or "click") == "click"
     solve = ("solve:solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout){found solved time}"
              if image else "solve:solve(timeout:$solveTimeout){found solved time}" if rule["mode"] == "cloudflare"
              else "solve:evaluate(content:\"'skipped'\"){value}")
@@ -196,6 +197,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     set_user_agent = "userAgent(userAgent:$userAgent){time}" if user_agent else ""
     user_agent_variable = " $userAgent:String!" if user_agent else ""
     variable_suffix = (" $solveTimeout:Float!" if needs_solver else "")
+    variable_suffix += " $selector:String!" if native_click else " $submit:String!"
     if extra:
         variable_suffix += " " + extra
     variable_suffix += user_agent_variable
@@ -206,11 +208,12 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       waitBefore:waitForTimeout(time:$beforeWait){time}
       before:html{html}
       %s
-      submit:evaluate(content:$submit){value}
+      %s
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
-    }""" % (variable_suffix, set_user_agent, solve)
+    }""" % (variable_suffix, set_user_agent, solve,
+              "submit:click(selector:$selector){selector time}" if native_click else "submit:evaluate(content:$submit){value}")
 
 
 def build_preflight_query(user_agent: Optional[str] = None) -> str:
@@ -227,7 +230,8 @@ def build_preflight_query(user_agent: Optional[str] = None) -> str:
 
 
 def page_text(html: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+    visible_html = re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", visible_html)).strip()
 
 
 def compact_html(html: str) -> str:
@@ -301,12 +305,13 @@ class BrowserlessSigner:
             initial = classify(str((preflight.get("before") or {}).get("html") or ""), rule)
             if initial.status in {"already", "success"}:
                 return initial
-        variables: Dict[str, Any] = {
-            "cookies": cookies, "url": target_url,
-            "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
-                                     rule.get("captcha_input_selector"), rule.get("submit_text")),
-            "beforeWait": 2000, "wait": 3500,
-        }
+        submit_method = str(rule.get("submit_method") or "click")
+        variables: Dict[str, Any] = {"cookies": cookies, "url": target_url, "beforeWait": 2000, "wait": 3500}
+        if submit_method == "click":
+            variables["selector"] = rule["submit_selector"]
+        else:
+            variables["submit"] = _submit_script(rule["submit_selector"], submit_method,
+                                                   rule.get("captcha_input_selector"), rule.get("submit_text"))
         if rule["mode"] != "open_page":
             variables["solveTimeout"] = 60000
         if rule["mode"] == "image":
