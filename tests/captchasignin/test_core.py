@@ -32,6 +32,7 @@ def test_open_page_rule_generates_valid_evaluate_response_shape():
     query = core.build_query({"mode": "open_page"})
     assert "solve:evaluate(content:\"'skipped'\"){value}" in query
     assert "{value}{found solved time}" not in query
+    assert "$solveTimeout" not in query
 
 
 def test_image_rule_keeps_selector_solver_and_optional_site_user_agent():

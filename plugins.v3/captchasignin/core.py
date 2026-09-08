@@ -188,13 +188,18 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     depend on Browserless classifying it as that one specific type.
     """
     image = rule["mode"] == "image"
+    needs_solver = rule["mode"] in {"image", "cloudflare"}
     solve = ("solve:solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout){found solved time}"
              if image else "solve:solve(timeout:$solveTimeout){found solved time}" if rule["mode"] == "cloudflare"
              else "solve:evaluate(content:\"'skipped'\"){value}")
     extra = "$captchaSelector:String! $captchaInputSelector:String!" if image else ""
     set_user_agent = "userAgent(userAgent:$userAgent){time}" if user_agent else ""
     user_agent_variable = " $userAgent:String!" if user_agent else ""
-    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $beforeWait:Float! $wait:Float! $solveTimeout:Float! %s) {
+    variable_suffix = (" $solveTimeout:Float!" if needs_solver else "")
+    if extra:
+        variable_suffix += " " + extra
+    variable_suffix += user_agent_variable
+    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $beforeWait:Float! $wait:Float!%s) {
       %s
       cookies(cookies:$cookies){cookies{name}}
       goto(url:$url,waitUntil:domContentLoaded){status}
@@ -205,7 +210,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
-    }""" % (extra + user_agent_variable, set_user_agent, solve)
+    }""" % (variable_suffix, set_user_agent, solve)
 
 
 def build_preflight_query(user_agent: Optional[str] = None) -> str:
@@ -300,8 +305,10 @@ class BrowserlessSigner:
             "cookies": cookies, "url": target_url,
             "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
                                      rule.get("captcha_input_selector"), rule.get("submit_text")),
-            "beforeWait": 2000, "wait": 3500, "solveTimeout": 60000,
+            "beforeWait": 2000, "wait": 3500,
         }
+        if rule["mode"] != "open_page":
+            variables["solveTimeout"] = 60000
         if rule["mode"] == "image":
             variables.update({"captchaSelector": rule["captcha_selector"], "captchaInputSelector": rule["captcha_input_selector"]})
         if user_agent:
