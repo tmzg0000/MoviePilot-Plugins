@@ -55,7 +55,7 @@ def test_luckpt_accepts_its_confirmation_dialog_and_recognizes_its_result():
     assert core.classify("<p>今日已领取</p>", rule).status == "already"
 
 
-def test_yemapt_uses_hash_route_and_waits_for_altcha_payload_before_clicking():
+def test_yemapt_uses_hash_route_and_native_altcha_click_before_waiting_for_payload():
     rule = core.resolve_rule({"url": "https://www.yemapt.org", "id": "yemapt"}, {})
     assert rule["mode"] == "altcha"
     assert core.target_url("https://www.yemapt.org", rule["path"], rule["route_fragment"]) == (
@@ -63,9 +63,12 @@ def test_yemapt_uses_hash_route_and_waits_for_altcha_payload_before_clicking():
     )
     script = core._altcha_submit_script(rule)
     assert "altchaPayload" in script
-    assert "input[type='checkbox']" in script
     assert "Date.now() + 30000" in script
     assert "ant-btn-primary" in script
+    query = core.build_query(rule)
+    assert "$altchaSelector:String!" in query
+    assert "altcha:click(selector:$altchaSelector){selector time}" in query
+    assert query.index("altcha:click") < query.index("submit:evaluate")
     assert core.classify("<p>你的今日状态：已签到</p>", rule).status == "already"
 
 

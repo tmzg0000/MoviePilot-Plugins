@@ -251,17 +251,15 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
 
 
 def _altcha_submit_script(rule: Mapping[str, Any]) -> str:
-    checkbox = json.dumps(str(rule["altcha_checkbox_selector"]))
     payload = json.dumps(str(rule["altcha_payload_selector"]))
     submit = _submit_script(str(rule["submit_selector"]), "dom_click", submit_text=rule.get("submit_text"))
     return """(async () => {
       const ready = () => { const input = document.querySelector(%s); return input && input.value.trim() ? input : null; };
-      if (!ready()) { const checkbox = document.querySelector(%s); if (!checkbox) return false; checkbox.click(); }
       const deadline = Date.now() + 30000;
       while (!ready() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
       if (!ready()) return false;
       return await %s;
-    })()""" % (payload, checkbox, submit)
+    })()""" % (payload, submit)
 
 
 def _trigger_script(selector: str) -> str:
@@ -280,6 +278,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     """
     image = rule["mode"] in {"image", "trigger_image"}
     triggered_image = rule["mode"] == "trigger_image"
+    altcha = rule["mode"] == "altcha"
     needs_solver = rule["mode"] in {"image", "trigger_image", "cloudflare"}
     native_click = str(rule.get("submit_method") or "click") == "click"
     solve = ("solve:solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout){found solved time}"
@@ -292,6 +291,8 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     variable_suffix += " $selector:String!" if native_click else " $submit:String!"
     if triggered_image:
         variable_suffix += " $trigger:String! $triggerWait:Float!"
+    if altcha:
+        variable_suffix += " $altchaSelector:String!"
     if extra:
         variable_suffix += " " + extra
     variable_suffix += user_agent_variable
@@ -304,11 +305,13 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       %s
       %s
       %s
+      %s
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
     }""" % (variable_suffix, set_user_agent,
               "trigger:evaluate(content:$trigger){value}\n      waitForTrigger:waitForTimeout(time:$triggerWait){time}" if triggered_image else "",
+              "altcha:click(selector:$altchaSelector){selector time}" if altcha else "",
               solve,
               "submit:click(selector:$selector){selector time}" if native_click else "submit:evaluate(content:$submit){value}")
 
@@ -412,6 +415,8 @@ class BrowserlessSigner:
             variables["submit"] = (_altcha_submit_script(rule) if submit_method == "altcha_click"
                                    else _submit_script(rule["submit_selector"], submit_method,
                                                        rule.get("captcha_input_selector"), rule.get("submit_text")))
+        if submit_method == "altcha_click":
+            variables["altchaSelector"] = rule["altcha_checkbox_selector"]
         if rule["mode"] == "trigger_image":
             variables["trigger"] = _trigger_script(str(rule["trigger_selector"]))
             variables["triggerWait"] = int(rule.get("trigger_wait") or 500)
