@@ -37,16 +37,32 @@ def test_open_page_rule_generates_valid_evaluate_response_shape():
     assert "submit:click(selector:$selector){selector time}" in query
 
 
-def test_luckpt_uses_page_context_click_with_its_text_fallback():
-    rule = core.resolve_rule({"url": "https://pt.luckpt.de", "id": "luckpt"}, {})
-    assert rule["submit_method"] == "dom_click"
+def test_luckpt_accepts_its_confirmation_dialog_and_recognizes_its_result():
+    rule = core.resolve_rule(
+        {"url": "https://pt.luckpt.de", "id": "luckpt"},
+        {"pt.luckpt.de": {"submit_method": "dom_click"}},
+    )
+    assert rule["submit_method"] == "confirm_click"
     query = core.build_query(rule)
     assert "$submit:String!" in query
     assert "submit:evaluate(content:$submit){value}" in query
     assert "submit:click(selector:$selector)" not in query
     script = core._submit_script(rule["submit_selector"], rule["submit_method"], submit_text=rule["submit_text"])
     assert "button.click()" in script
+    assert ".layui-layer-btn0" in script
     assert json.dumps(rule["submit_text"]) in script
+    assert core.classify("<p>奖励领取成功</p>", rule).status == "success"
+    assert core.classify("<p>今日已领取</p>", rule).status == "already"
+
+
+def test_oshen_uses_ajax_to_capture_the_form_result():
+    rule = core.resolve_rule(
+        {"url": "https://www.oshen.win", "id": "oshen"},
+        {"www.oshen.win": {"submit_selector": "#custom-submit"}},
+    )
+    assert rule["mode"] == "image"
+    assert rule["submit_method"] == "ajax"
+    assert rule["submit_selector"] == "#custom-submit"
 
 
 def test_ajax_rule_declares_submit_once_and_does_not_declare_selector():
@@ -154,5 +170,38 @@ def test_signer_returns_already_before_trying_absent_baozi_captcha():
         core.urllib.request.urlopen = original_urlopen
 
     assert result.status == "already"
+    assert len(requests) == 1
+    assert requests[0]["operationName"] == "CheckInPreflight"
+
+
+def test_signer_returns_success_before_clicking_an_already_processed_open_page():
+    requests = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read():
+            return json.dumps({"data": {"goto": {"status": 200}, "before": {"html": "签到成功"}}}).encode()
+
+    original_urlopen = core.urllib.request.urlopen
+    try:
+        def fake_urlopen(request, timeout):
+            requests.append(json.loads(request.data.decode()))
+            return Response()
+
+        core.urllib.request.urlopen = fake_urlopen
+        result = core.BrowserlessSigner("https://browserless.example", "safe-token").sign(
+            {"url": "https://pt.example", "cookie": "uid=1"},
+            {"mode": "open_page", "path": "/attendance.php", "submit_selector": "#sign"},
+        )
+    finally:
+        core.urllib.request.urlopen = original_urlopen
+
+    assert result.status == "success"
     assert len(requests) == 1
     assert requests[0]["operationName"] == "CheckInPreflight"

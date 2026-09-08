@@ -42,14 +42,26 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "submit_selector": "input[type='submit'], button[type='submit']",
         "submit_text": "立即签到",
     },
+    "oshen.win": {
+        "mode": "image",
+        "path": "/attendance.php",
+        "captcha_selector": "form:has(input[name='imagestring']) img[alt='CAPTCHA']",
+        "captcha_input_selector": "form input[name='imagestring']",
+        "submit_selector": "form input[type='submit'][value='立即签到']",
+        # Capture the form response instead of losing a server-side CAPTCHA
+        # rejection in the subsequently rendered attendance page.
+        "submit_method": "ajax",
+    },
     "pt.luckpt.de": {
         "mode": "open_page",
         "path": "/medal_collection.php",
         "submit_selector": ".claim-bar button.claim-reward[data-type='bonus_daily']",
-        # BrowserQL's native click does not reliably dispatch this site's
-        # JavaScript handler, so click from the page context instead.
-        "submit_method": "dom_click",
+        # The handler opens a layer.confirm dialog before it sends the AJAX
+        # request, so the confirmation must be accepted in the page context.
+        "submit_method": "confirm_click",
         "submit_text": "领取 幸运星 ×1000",
+        "success_keywords": ["奖励领取成功"],
+        "already_keywords": ["今日已领取", "已经领取", "已领取"],
     },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
     "mua.xloli.cc": {
@@ -101,12 +113,17 @@ def parse_rules(raw: Any) -> Dict[str, Dict[str, Any]]:
 
 def resolve_rule(site: Mapping[str, Any], custom_rules: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
     host = normalize_host(str(site.get("url") or ""))
-    custom = custom_rules.get(str(site.get("id"))) or custom_rules.get(host) or {}
+    custom = (custom_rules.get(str(site.get("id"))) or custom_rules.get(host)
+              or custom_rules.get("www." + host) or {})
     preset = DEFAULT_RULES.get(host)
     if preset is None and host.endswith(".open.cd"):
         preset = DEFAULT_RULES["open.cd"]
     rule = dict(preset or {})
     rule.update(custom)
+    # 1.0.13 exposed dom_click for LuckPT.  Its reward handler always opens a
+    # confirmation dialog, so migrate saved rules to the complete action.
+    if host == "pt.luckpt.de" and rule.get("submit_method") == "dom_click":
+        rule["submit_method"] = "confirm_click"
     rule.setdefault("mode", "open_page")
     rule.setdefault("path", "/attendance.php")
     rule.setdefault("submit_selector", "input[type='submit']")
@@ -172,11 +189,16 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
         if (found) return found; }
       return document.querySelector(%s);
     })()""" % (text_json, selector_json)
-    if method in {"click", "dom_click"}:
-        return """(() => { const input = %s ? document.querySelector(%s) : null;
+    if method in {"click", "dom_click", "confirm_click"}:
+        confirm = "" if method != "confirm_click" else """
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          const confirm = [...document.querySelectorAll('.layui-layer-btn0, .layui-layer-btn a')]
+            .find((node) => node.offsetParent !== null && /确定|确认/.test((node.textContent || '').trim()));
+          if (!confirm) return false; confirm.click();"""
+        return """(async () => { const input = %s ? document.querySelector(%s) : null;
           if (input && !input.value.trim()) return false;
-          const button = %s; if (!button) return false; button.click(); return true;
-        })()""" % (input_json, input_json, target_script)
+          const button = %s; if (!button) return false; button.click(); %s return true;
+        })()""" % (input_json, input_json, target_script, confirm)
     return """(async () => {
       const input = %s ? document.querySelector(%s) : null; if (input && !input.value.trim()) return false;
       const target = %s; const form = target && (target.form || target);
@@ -253,10 +275,10 @@ def classify(html: str, rule: Mapping[str, Any]) -> SignResult:
     lower = full_text.lower()
     if any(word.lower() in lower for word in LOGIN_WORDS) and "logout" not in lower:
         return SignResult("failed", "Cookie 无效或已过期")
+    if any(word.lower() in lower for word in rule.get("success_keywords", [])) or any(word in lower for word in SUCCESS_WORDS):
+        return SignResult("success", text or "签到成功")
     if any(word.lower() in lower for word in rule.get("already_keywords", [])) or any(word in lower for word in ALREADY_WORDS):
         return SignResult("already", text or "今日已经签到")
-    if any(word in lower for word in SUCCESS_WORDS):
-        return SignResult("success", text or "签到成功")
     return SignResult("failed", text or "未识别到签到成功结果")
 
 
@@ -302,18 +324,20 @@ class BrowserlessSigner:
         if not cookies:
             return SignResult("failed", "站点 Cookie 格式无效")
         user_agent = str(site.get("ua") or "").strip()
-        if rule["mode"] == "image":
-            preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target_url}
-            if user_agent:
-                preflight_variables["userAgent"] = user_agent
-            preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
-            if isinstance(preflight, SignResult):
-                return preflight
-            if preflight.get("goto", {}).get("status") not in range(200, 400):
-                return SignResult("failed", "打开签到页失败")
-            initial = classify(str((preflight.get("before") or {}).get("html") or ""), rule)
-            if initial.status in {"already", "success"}:
-                return initial
+        # Always inspect the page before interacting.  A site may remove its
+        # action button after either a successful sign-in or an already-signed
+        # state; both must be terminal results, regardless of sign-in mode.
+        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target_url}
+        if user_agent:
+            preflight_variables["userAgent"] = user_agent
+        preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
+        if isinstance(preflight, SignResult):
+            return preflight
+        if preflight.get("goto", {}).get("status") not in range(200, 400):
+            return SignResult("failed", "打开签到页失败")
+        initial = classify(str((preflight.get("before") or {}).get("html") or ""), rule)
+        if initial.status in {"already", "success"}:
+            return initial
         submit_method = str(rule.get("submit_method") or "click")
         variables: Dict[str, Any] = {"cookies": cookies, "url": target_url, "beforeWait": 2000, "wait": 3500}
         if submit_method == "click":
