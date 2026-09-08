@@ -63,6 +63,31 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "success_keywords": ["奖励领取成功"],
         "already_keywords": ["今日已领取", "已经领取", "已领取"],
     },
+    "yemapt.org": {
+        "mode": "altcha",
+        "path": "/",
+        "route_fragment": "#/user/growth?tab=checkIn",
+        "altcha_checkbox_selector": "altcha-widget input[type='checkbox']",
+        "altcha_payload_selector": "altcha-widget .altcha[data-state='verified'] input[name='altchaPayload']",
+        "submit_selector": "button.ant-btn-primary.ant-btn-lg.ant-btn-block:not([disabled])",
+        "submit_method": "altcha_click",
+        "submit_text": "立即签到",
+        "already_keywords": ["已签到，明日继续", "你的今日状态：已签到"],
+        "wait": 5000,
+    },
+    "hdsky.me": {
+        # HDSky only inserts its CAPTCHA controls after the user opens the
+        # Show Up dialog.  Solve the image after that trigger, then use its
+        # AJAX button handler to submit the value.
+        "mode": "trigger_image",
+        "path": "/index.php",
+        "trigger_selector": "#showup",
+        "captcha_selector": "#showupimg",
+        "captcha_input_selector": "#imagestring",
+        "submit_selector": "#showupbutton",
+        "submit_method": "dom_click",
+        "submit_text": "Let's Go",
+    },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
     "mua.xloli.cc": {
         "mode": "cloudflare",
@@ -134,16 +159,30 @@ def resolve_rule(site: Mapping[str, Any], custom_rules: Mapping[str, Mapping[str
 def validate_rule(rule: Mapping[str, Any]) -> Dict[str, Any]:
     result = dict(rule)
     mode = result.get("mode")
-    if mode not in {"open_page", "cloudflare", "image"}:
-        raise ValueError("签到方式必须为 open_page、cloudflare 或 image")
+    if mode not in {"open_page", "cloudflare", "image", "trigger_image", "altcha"}:
+        raise ValueError("签到方式必须为 open_page、cloudflare、image、trigger_image 或 altcha")
     path = str(result.get("path") or "")
     if not path.startswith("/") or path.startswith("//") or "\\" in path or "#" in path:
         raise ValueError("签到路径必须是以 / 开头的站内路径")
-    if mode == "image":
+    route_fragment = str(result.get("route_fragment") or "")
+    if route_fragment and (not route_fragment.startswith("#/") or "\\" in route_fragment):
+        raise ValueError("路由片段必须以 #/ 开头")
+    if mode in {"image", "trigger_image"}:
         for name in ("captcha_selector", "captcha_input_selector", "submit_selector"):
             if not str(result.get(name) or "").strip():
                 raise ValueError("图片验证码规则缺少 " + name)
+    if mode == "trigger_image" and not str(result.get("trigger_selector") or "").strip():
+        raise ValueError("弹窗图片验证码规则缺少 trigger_selector")
+    if mode == "altcha":
+        for name in ("altcha_checkbox_selector", "altcha_payload_selector", "submit_selector"):
+            if not str(result.get(name) or "").strip():
+                raise ValueError("Altcha 规则缺少 " + name)
     return result
+
+
+def target_url(base_url: str, path: str, route_fragment: Optional[str] = None) -> str:
+    target = urllib.parse.urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
+    return target.split("#", 1)[0] + (route_fragment or "")
 
 
 def cookie_objects(cookie_header: str, target_url: str) -> List[Dict[str, Any]]:
@@ -211,6 +250,27 @@ def _submit_script(selector: str, method: str, captcha_input: Optional[str] = No
     })()""" % (input_json, input_json, target_script)
 
 
+def _altcha_submit_script(rule: Mapping[str, Any]) -> str:
+    checkbox = json.dumps(str(rule["altcha_checkbox_selector"]))
+    payload = json.dumps(str(rule["altcha_payload_selector"]))
+    submit = _submit_script(str(rule["submit_selector"]), "dom_click", submit_text=rule.get("submit_text"))
+    return """(async () => {
+      const ready = () => { const input = document.querySelector(%s); return input && input.value.trim() ? input : null; };
+      if (!ready()) { const checkbox = document.querySelector(%s); if (!checkbox) return false; checkbox.click(); }
+      const deadline = Date.now() + 30000;
+      while (!ready() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
+      if (!ready()) return false;
+      return await %s;
+    })()""" % (payload, checkbox, submit)
+
+
+def _trigger_script(selector: str) -> str:
+    selector_json = json.dumps(selector)
+    return """(() => { const trigger = document.querySelector(%s);
+      if (!trigger) return false; trigger.click(); return true;
+    })()""" % selector_json
+
+
 def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> str:
     """Build one BrowserQL operation for a site check-in.
 
@@ -218,8 +278,9 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     Turnstile.  Restricting ``solve`` to ``cloudflare`` made a Turnstile page
     depend on Browserless classifying it as that one specific type.
     """
-    image = rule["mode"] == "image"
-    needs_solver = rule["mode"] in {"image", "cloudflare"}
+    image = rule["mode"] in {"image", "trigger_image"}
+    triggered_image = rule["mode"] == "trigger_image"
+    needs_solver = rule["mode"] in {"image", "trigger_image", "cloudflare"}
     native_click = str(rule.get("submit_method") or "click") == "click"
     solve = ("solve:solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout){found solved time}"
              if image else "solve:solve(timeout:$solveTimeout){found solved time}" if rule["mode"] == "cloudflare"
@@ -229,6 +290,8 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     user_agent_variable = " $userAgent:String!" if user_agent else ""
     variable_suffix = (" $solveTimeout:Float!" if needs_solver else "")
     variable_suffix += " $selector:String!" if native_click else " $submit:String!"
+    if triggered_image:
+        variable_suffix += " $trigger:String! $triggerWait:Float!"
     if extra:
         variable_suffix += " " + extra
     variable_suffix += user_agent_variable
@@ -240,10 +303,13 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       before:html{html}
       %s
       %s
+      %s
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
-    }""" % (variable_suffix, set_user_agent, solve,
+    }""" % (variable_suffix, set_user_agent,
+              "trigger:evaluate(content:$trigger){value}\n      waitForTrigger:waitForTimeout(time:$triggerWait){time}" if triggered_image else "",
+              solve,
               "submit:click(selector:$selector){selector time}" if native_click else "submit:evaluate(content:$submit){value}")
 
 
@@ -319,15 +385,15 @@ class BrowserlessSigner:
         cookie = str(site.get("cookie") or "").strip()
         if not base_url or not cookie:
             return SignResult("failed", "站点地址或 Cookie 为空")
-        target_url = urllib.parse.urljoin(base_url + "/", str(rule["path"]).lstrip("/"))
-        cookies = cookie_objects(cookie, target_url)
+        target = target_url(base_url, str(rule["path"]), rule.get("route_fragment"))
+        cookies = cookie_objects(cookie, target)
         if not cookies:
             return SignResult("failed", "站点 Cookie 格式无效")
         user_agent = str(site.get("ua") or "").strip()
         # Always inspect the page before interacting.  A site may remove its
         # action button after either a successful sign-in or an already-signed
         # state; both must be terminal results, regardless of sign-in mode.
-        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target_url}
+        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target}
         if user_agent:
             preflight_variables["userAgent"] = user_agent
         preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
@@ -339,15 +405,19 @@ class BrowserlessSigner:
         if initial.status in {"already", "success"}:
             return initial
         submit_method = str(rule.get("submit_method") or "click")
-        variables: Dict[str, Any] = {"cookies": cookies, "url": target_url, "beforeWait": 2000, "wait": 3500}
+        variables: Dict[str, Any] = {"cookies": cookies, "url": target, "beforeWait": 2000, "wait": int(rule.get("wait") or 3500)}
         if submit_method == "click":
             variables["selector"] = rule["submit_selector"]
         else:
-            variables["submit"] = _submit_script(rule["submit_selector"], submit_method,
-                                                   rule.get("captcha_input_selector"), rule.get("submit_text"))
+            variables["submit"] = (_altcha_submit_script(rule) if submit_method == "altcha_click"
+                                   else _submit_script(rule["submit_selector"], submit_method,
+                                                       rule.get("captcha_input_selector"), rule.get("submit_text")))
+        if rule["mode"] == "trigger_image":
+            variables["trigger"] = _trigger_script(str(rule["trigger_selector"]))
+            variables["triggerWait"] = int(rule.get("trigger_wait") or 500)
         if rule["mode"] != "open_page":
             variables["solveTimeout"] = 60000
-        if rule["mode"] == "image":
+        if rule["mode"] in {"image", "trigger_image"}:
             variables.update({"captchaSelector": rule["captcha_selector"], "captchaInputSelector": rule["captcha_input_selector"]})
         if user_agent:
             variables["userAgent"] = user_agent
@@ -357,12 +427,12 @@ class BrowserlessSigner:
         if data.get("goto", {}).get("status") not in range(200, 400):
             return SignResult("failed", "打开签到页失败")
         solve = data.get("solve") or {}
-        if rule["mode"] == "image" and not solve.get("found"):
+        if rule["mode"] in {"image", "trigger_image"} and not solve.get("found"):
             return SignResult("failed", "未找到图片验证码；请检查验证码图片选择器")
         if rule["mode"] != "open_page" and solve.get("found") and not solve.get("solved"):
             return SignResult("failed", "找到验证码但未能完成验证")
         submitted = (data.get("submit") or {}).get("value")
-        if rule["mode"] == "image" and submitted in (False, "false"):
+        if rule["mode"] in {"image", "trigger_image"} and submitted in (False, "false"):
             return SignResult("failed", "验证码未自动填入输入框，未发送签到请求")
         ajax_result = classify_ajax_response((data.get("response") or {}).get("value"), rule)
         if ajax_result:

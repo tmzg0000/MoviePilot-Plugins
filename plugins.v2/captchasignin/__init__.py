@@ -28,7 +28,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.14"
+    plugin_version = "1.0.16"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -108,7 +108,7 @@ class CaptchaSignIn(_PluginBase):
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "browserless_url", "label": "Browserless 地址", "placeholder": DEFAULT_BROWSERLESS_URL, "hint": "可填写服务根地址或完整 /stealth/bql 地址", "persistent-hint": True}}]},
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "browserless_token", "label": "Browserless Token", "type": "password", "persistent-hint": True, "hint": "必填；不会写入日志"}}]},
             ]},
-            {"component": "VTextarea", "props": {"model": "site_rules", "label": "自定义站点规则 JSON（可留空）", "rows": 10, "hint": "键使用域名或站点 ID；mode 为 image、cloudflare 或 open_page。内置 OpenCD、包子与 Cloudflare 站点规则。", "persistent-hint": True}},
+                {"component": "VTextarea", "props": {"model": "site_rules", "label": "自定义站点规则 JSON（可留空）", "rows": 10, "hint": "键使用域名或站点 ID；mode 为 image、trigger_image、cloudflare、open_page 或 altcha。内置 OpenCD、包子、LuckPT、OshenPT、YemaPT、HDSky 与 Cloudflare 站点规则。", "persistent-hint": True}},
         ]}], self._config()
 
     def get_page(self) -> List[dict]:

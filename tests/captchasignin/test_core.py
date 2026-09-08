@@ -55,6 +55,79 @@ def test_luckpt_accepts_its_confirmation_dialog_and_recognizes_its_result():
     assert core.classify("<p>今日已领取</p>", rule).status == "already"
 
 
+def test_yemapt_uses_hash_route_and_waits_for_altcha_payload_before_clicking():
+    rule = core.resolve_rule({"url": "https://www.yemapt.org", "id": "yemapt"}, {})
+    assert rule["mode"] == "altcha"
+    assert core.target_url("https://www.yemapt.org", rule["path"], rule["route_fragment"]) == (
+        "https://www.yemapt.org/#/user/growth?tab=checkIn"
+    )
+    script = core._altcha_submit_script(rule)
+    assert "altchaPayload" in script
+    assert "input[type='checkbox']" in script
+    assert "Date.now() + 30000" in script
+    assert "ant-btn-primary" in script
+    assert core.classify("<p>你的今日状态：已签到</p>", rule).status == "already"
+
+
+def test_hdsky_opens_its_dialog_before_solving_the_image_captcha():
+    rule = core.resolve_rule({"url": "https://hdsky.me", "id": "hdsky"}, {})
+    assert rule["mode"] == "trigger_image"
+    assert rule["trigger_selector"] == "#showup"
+    assert rule["captcha_selector"] == "#showupimg"
+    assert rule["captcha_input_selector"] == "#imagestring"
+    assert rule["submit_selector"] == "#showupbutton"
+    query = core.build_query(rule)
+    assert "trigger:evaluate(content:$trigger){value}" in query
+    assert "waitForTrigger:waitForTimeout(time:$triggerWait)" in query
+    assert query.index("trigger:evaluate") < query.index("solve:solveImageCaptcha")
+    assert "$trigger:String! $triggerWait:Float!" in query
+    assert core._trigger_script(rule["trigger_selector"]).count("#showup") == 1
+
+
+def test_hdsky_signer_sends_the_trigger_before_image_captcha_variables():
+    requests = []
+
+    class Response:
+        def __init__(self, data):
+            self.data = data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"data": self.data}).encode()
+
+    replies = [
+        {"goto": {"status": 200}, "before": {"html": "欢迎回来"}},
+        {"goto": {"status": 200}, "solve": {"found": True, "solved": True},
+         "submit": {"value": "true"}, "response": {"value": "null"},
+         "before": {"html": "欢迎回来"}, "after": {"html": "签到成功"}},
+    ]
+    original_urlopen = core.urllib.request.urlopen
+    try:
+        def fake_urlopen(request, timeout):
+            requests.append(json.loads(request.data.decode()))
+            return Response(replies.pop(0))
+
+        core.urllib.request.urlopen = fake_urlopen
+        result = core.BrowserlessSigner("https://browserless.example", "safe-token").sign(
+            {"url": "https://hdsky.me", "cookie": "uid=1"},
+            core.DEFAULT_RULES["hdsky.me"],
+        )
+    finally:
+        core.urllib.request.urlopen = original_urlopen
+
+    assert result.status == "success"
+    action = requests[1]
+    assert "trigger" in action["variables"]
+    assert "#showup" in action["variables"]["trigger"]
+    assert action["variables"]["triggerWait"] == 500
+    assert action["variables"]["captchaSelector"] == "#showupimg"
+
+
 def test_oshen_uses_ajax_to_capture_the_form_result():
     rule = core.resolve_rule(
         {"url": "https://www.oshen.win", "id": "oshen"},

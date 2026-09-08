@@ -1,8 +1,8 @@
 # 验证码站点签到
 
-MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已保存的站点 Cookie，并通过 Browserless BrowserQL 处理图片验证码、Cloudflare 页面挑战和 Turnstile。
+MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已保存的站点 Cookie，并通过 Browserless BrowserQL 处理图片验证码、弹窗图片验证码、Cloudflare 页面挑战、Turnstile 与 Altcha。
 
-在插件设置中填写 Browserless 地址和 Token，选择已配置 Cookie 的站点。内置 OpenCD、包子、慕雪阁、`dstudio.me`、`mua.xloli.cc` 与 `share.ilolicon.com` 的规则。包子在当天已经签到且验证码图片消失时会直接报告“已签到”。
+在插件设置中填写 Browserless 地址和 Token，选择已配置 Cookie 的站点。内置 OpenCD、包子、慕雪阁、LuckPT、OshenPT、YemaPT、HDSky、`dstudio.me`、`mua.xloli.cc` 与 `share.ilolicon.com` 的规则。包子在当天已经签到且验证码图片消失时会直接报告“已签到”。
 
 ## Browserless 配置
 
@@ -24,7 +24,11 @@ MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已�
 }
 ```
 
-`mode` 支持 `image`、`cloudflare` 和 `open_page`。`cloudflare` 使用 Browserless 自动识别，兼容 Cloudflare 页面挑战与 Turnstile；若站点在 MoviePilot 中设置了 User-Agent，插件会在 Browserless 会话中复用它。Cookie、Browserless Token 与验证码内容均不会写入日志或签到历史。
+`mode` 支持 `image`、`trigger_image`、`cloudflare`、`open_page` 和 `altcha`。`trigger_image` 会先点击 `trigger_selector` 打开弹窗，再识别图片验证码并提交；`cloudflare` 使用 Browserless 自动识别，兼容 Cloudflare 页面挑战与 Turnstile；`altcha` 在站点页面内完成 Altcha 验证后再点击签到。若站点在 MoviePilot 中设置了 User-Agent，插件会在 Browserless 会话中复用它。Cookie、Browserless Token 与验证码内容均不会写入日志或签到历史。
+
+YemaPT 已内置 Hash 路由和 Altcha 签到规则；当天页面显示“已签到”时会直接结束，不重复验证或点击。
+
+HDSky 已内置弹窗图片验证码规则：先点击“签到”打开验证码对话框，再由 Browserless 填写并点击 “Let's Go”。
 
 慕雪阁无需 Cloudflare 或图片验证码；如配置过自定义规则，请删除该项以使用内置规则，或改为：
 
