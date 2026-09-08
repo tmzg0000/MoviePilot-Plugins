@@ -36,6 +36,12 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "submit_selector": "input[type='submit']",
         "already_keywords": ["签到成功"],
     },
+    "pt.muxuege.org": {
+        "mode": "open_page",
+        "path": "/attendance.php",
+        "submit_selector": "input[type='submit'], button[type='submit']",
+        "submit_text": "立即签到",
+    },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
     "mua.xloli.cc": {
         "mode": "cloudflare",
@@ -146,24 +152,32 @@ def bql_endpoint(address: str, token: str) -> str:
     return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path, "", urllib.parse.urlencode(query), ""))
 
 
-def _submit_script(selector: str, method: str, captcha_input: Optional[str] = None) -> str:
+def _submit_script(selector: str, method: str, captcha_input: Optional[str] = None,
+                   submit_text: Optional[str] = None) -> str:
     selector_json = json.dumps(selector)
     input_json = json.dumps(captcha_input or "")
+    text_json = json.dumps(submit_text or "")
+    target_script = """(() => { const wanted = %s.trim();
+      if (wanted) { const matches = [...document.querySelectorAll('input, button, a')];
+        const found = matches.find((node) => ((node.value || node.textContent || '').trim().includes(wanted)));
+        if (found) return found; }
+      return document.querySelector(%s);
+    })()""" % (text_json, selector_json)
     if method == "click":
         return """(() => { const input = %s ? document.querySelector(%s) : null;
           if (input && !input.value.trim()) return false;
-          const button = document.querySelector(%s); if (!button) return false; button.click(); return true;
-        })()""" % (input_json, input_json, selector_json)
+          const button = %s; if (!button) return false; button.click(); return true;
+        })()""" % (input_json, input_json, target_script)
     return """(async () => {
       const input = %s ? document.querySelector(%s) : null; if (input && !input.value.trim()) return false;
-      const target = document.querySelector(%s); const form = target && (target.form || target);
+      const target = %s; const form = target && (target.form || target);
       if (!(form instanceof HTMLFormElement)) throw new Error('未找到签到表单');
       const action = new URL(form.action, location.href);
       if (action.origin !== location.origin) throw new Error('只允许同源提交');
       const data = new FormData(form); if (target.name && !target.disabled) data.append(target.name, target.value);
       const response = await fetch(action.href, {method: form.method || 'POST', credentials:'same-origin', body:data});
       window.__captchasignin_response = {status:response.status, text:await response.text()}; return response.status;
-    })()""" % (input_json, input_json, selector_json)
+    })()""" % (input_json, input_json, target_script)
 
 
 def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> str:
@@ -192,6 +206,19 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
       after:html{html}
     }""" % (extra + user_agent_variable, set_user_agent, solve)
+
+
+def build_preflight_query(user_agent: Optional[str] = None) -> str:
+    """Read the page before a solver can fail on an absent post-sign-in CAPTCHA."""
+    set_user_agent = "userAgent(userAgent:$userAgent){time}" if user_agent else ""
+    user_agent_variable = " $userAgent:String!" if user_agent else ""
+    return """mutation CheckInPreflight($cookies:[CookieInput!]! $url:String!%s) {
+      %s
+      cookies(cookies:$cookies){cookies{name}}
+      goto(url:$url,waitUntil:domContentLoaded){status}
+      waitForTimeout(time:2000){time}
+      html{html}
+    }""" % (user_agent_variable, set_user_agent)
 
 
 def page_text(html: str) -> str:
@@ -257,29 +284,30 @@ class BrowserlessSigner:
         if not cookies:
             return SignResult("failed", "站点 Cookie 格式无效")
         user_agent = str(site.get("ua") or "").strip()
+        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target_url}
+        if user_agent:
+            preflight_variables["userAgent"] = user_agent
+        preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
+        if isinstance(preflight, SignResult):
+            return preflight
+        if preflight.get("goto", {}).get("status") not in range(200, 400):
+            return SignResult("failed", "打开签到页失败")
+        initial = classify(str((preflight.get("html") or {}).get("html") or ""), rule)
+        if initial.status in {"already", "success"}:
+            return initial
         variables: Dict[str, Any] = {
             "cookies": cookies, "url": target_url,
             "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
-                                     rule.get("captcha_input_selector")),
+                                     rule.get("captcha_input_selector"), rule.get("submit_text")),
             "beforeWait": 2000, "wait": 3500, "solveTimeout": 60000,
         }
         if rule["mode"] == "image":
             variables.update({"captchaSelector": rule["captcha_selector"], "captchaInputSelector": rule["captcha_input_selector"]})
         if user_agent:
             variables["userAgent"] = user_agent
-        payload = json.dumps({"query": build_query(rule, user_agent), "operationName": "CheckIn", "variables": variables}).encode()
-        request = urllib.request.Request(self.endpoint, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                value = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            return SignResult("failed", "Browserless HTTP %s" % exc.code)
-        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            return SignResult("failed", "Browserless 请求失败：%s" % str(exc))
-        errors = value.get("errors") or []
-        if errors:
-            return SignResult("failed", "Browserless 执行失败：" + str(errors[0].get("message") or "未知错误"))
-        data = value.get("data") or {}
+        data = self._request(variables, "CheckIn", build_query(rule, user_agent))
+        if isinstance(data, SignResult):
+            return data
         if data.get("goto", {}).get("status") not in range(200, 400):
             return SignResult("failed", "打开签到页失败")
         solve = data.get("solve") or {}
@@ -299,3 +327,18 @@ class BrowserlessSigner:
             if before.status == "already":
                 return before
         return result
+
+    def _request(self, variables: Mapping[str, Any], operation: str, query: str) -> Any:
+        payload = json.dumps({"query": query, "operationName": operation, "variables": variables}).encode()
+        request = urllib.request.Request(self.endpoint, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                value = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            return SignResult("failed", "Browserless HTTP %s" % exc.code)
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            return SignResult("failed", "Browserless 请求失败：%s" % str(exc))
+        errors = value.get("errors") or []
+        if errors:
+            return SignResult("failed", "Browserless 执行失败：" + str(errors[0].get("message") or "未知错误"))
+        return value.get("data") or {}

@@ -2,7 +2,7 @@
 
 MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已保存的站点 Cookie，并通过 Browserless BrowserQL 处理图片验证码、Cloudflare 页面挑战和 Turnstile。
 
-在插件设置中填写 Browserless 地址和 Token，选择已配置 Cookie 的站点。内置 OpenCD、包子、`dstudio.me`、`mua.xloli.cc` 与 `share.ilolicon.com` 的规则。
+在插件设置中填写 Browserless 地址和 Token，选择已配置 Cookie 的站点。内置 OpenCD、包子、慕雪阁、`dstudio.me`、`mua.xloli.cc` 与 `share.ilolicon.com` 的规则。包子在当天已经签到且验证码图片消失时会直接报告“已签到”。
 
 ## Browserless 配置
 
@@ -25,6 +25,19 @@ MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已�
 ```
 
 `mode` 支持 `image`、`cloudflare` 和 `open_page`。`cloudflare` 使用 Browserless 自动识别，兼容 Cloudflare 页面挑战与 Turnstile；若站点在 MoviePilot 中设置了 User-Agent，插件会在 Browserless 会话中复用它。Cookie、Browserless Token 与验证码内容均不会写入日志或签到历史。
+
+慕雪阁无需 Cloudflare 或图片验证码；如配置过自定义规则，请删除该项以使用内置规则，或改为：
+
+```json
+{
+  "pt.muxuege.org": {
+    "mode": "open_page",
+    "path": "/attendance.php",
+    "submit_selector": "input[type='submit'], button[type='submit']",
+    "submit_text": "立即签到"
+  }
+}
+```
 
 ## 结果页
 
