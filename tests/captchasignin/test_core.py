@@ -38,7 +38,7 @@ def test_image_rule_keeps_selector_solver_and_optional_site_user_agent():
 def test_preflight_reads_page_before_the_image_solver_and_preserves_user_agent():
     query = core.build_preflight_query("Mozilla/5.0 test")
     assert "mutation CheckInPreflight" in query
-    assert "html{html}" in query
+    assert "before:html{html}" in query
     assert "solveImageCaptcha" not in query
     assert "userAgent(userAgent:$userAgent)" in query
 
@@ -105,7 +105,7 @@ def test_signer_returns_already_before_trying_absent_baozi_captcha():
 
         @staticmethod
         def read():
-            return json.dumps({"data": {"goto": {"status": 200}, "html": {"html": "今日已签"}}}).encode()
+            return json.dumps({"data": {"goto": {"status": 200}, "before": {"html": "今日已签"}}}).encode()
 
     original_urlopen = core.urllib.request.urlopen
     try:

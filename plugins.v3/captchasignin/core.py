@@ -217,7 +217,7 @@ def build_preflight_query(user_agent: Optional[str] = None) -> str:
       cookies(cookies:$cookies){cookies{name}}
       goto(url:$url,waitUntil:domContentLoaded){status}
       waitForTimeout(time:2000){time}
-      html{html}
+      before:html{html}
     }""" % (user_agent_variable, set_user_agent)
 
 
@@ -284,17 +284,18 @@ class BrowserlessSigner:
         if not cookies:
             return SignResult("failed", "站点 Cookie 格式无效")
         user_agent = str(site.get("ua") or "").strip()
-        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target_url}
-        if user_agent:
-            preflight_variables["userAgent"] = user_agent
-        preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
-        if isinstance(preflight, SignResult):
-            return preflight
-        if preflight.get("goto", {}).get("status") not in range(200, 400):
-            return SignResult("failed", "打开签到页失败")
-        initial = classify(str((preflight.get("html") or {}).get("html") or ""), rule)
-        if initial.status in {"already", "success"}:
-            return initial
+        if rule["mode"] == "image":
+            preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target_url}
+            if user_agent:
+                preflight_variables["userAgent"] = user_agent
+            preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
+            if isinstance(preflight, SignResult):
+                return preflight
+            if preflight.get("goto", {}).get("status") not in range(200, 400):
+                return SignResult("failed", "打开签到页失败")
+            initial = classify(str((preflight.get("before") or {}).get("html") or ""), rule)
+            if initial.status in {"already", "success"}:
+                return initial
         variables: Dict[str, Any] = {
             "cookies": cookies, "url": target_url,
             "submit": _submit_script(rule["submit_selector"], str(rule.get("submit_method") or "click"),
