@@ -201,7 +201,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     if extra:
         variable_suffix += " " + extra
     variable_suffix += user_agent_variable
-    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $submit:String! $beforeWait:Float! $wait:Float!%s) {
+    return """mutation CheckIn($cookies:[CookieInput!]! $url:String! $beforeWait:Float! $wait:Float!%s) {
       %s
       cookies(cookies:$cookies){cookies{name}}
       goto(url:$url,waitUntil:domContentLoaded){status}
