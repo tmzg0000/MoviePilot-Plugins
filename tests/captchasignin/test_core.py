@@ -74,6 +74,15 @@ def test_yemapt_uses_hash_route_and_native_altcha_click_before_waiting_for_paylo
     assert "waitForTimeout(time:8000)" in preflight
 
 
+def test_default_rules_produce_direct_sign_in_links():
+    luckpt = core.resolve_rule({"url": "https://pt.luckpt.de", "id": "luckpt"}, {})
+    hdsky = core.resolve_rule({"url": "https://hdsky.me", "id": "hdsky"}, {})
+    assert core.target_url("https://pt.luckpt.de", luckpt["path"], luckpt.get("route_fragment")) == (
+        "https://pt.luckpt.de/medal_collection.php"
+    )
+    assert core.target_url("https://hdsky.me", hdsky["path"], hdsky.get("route_fragment")) == "https://hdsky.me/index.php"
+
+
 def test_hdsky_treats_its_signed_marker_as_success():
     rule = core.resolve_rule({"url": "https://hdsky.me", "id": "hdsky"}, {})
     assert core.classify("<p>已签到</p>", rule).status == "success"

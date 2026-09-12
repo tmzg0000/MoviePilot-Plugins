@@ -22,14 +22,14 @@ except ImportError:  # MoviePilot V2
 
 from app.schemas import NotificationType
 
-from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, SignResult, parse_rules, resolve_rule
+from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, SignResult, parse_rules, resolve_rule, target_url
 
 
 class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.20"
+    plugin_version = "1.0.21"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -134,12 +134,18 @@ class CaptchaSignIn(_PluginBase):
             meta = self._status_meta(str(row.get("status") or ""))
             site_name = str(row.get("site") or "未知站点")
             site_url = str(row.get("url") or "").strip()
+            if site_url:
+                try:
+                    stored_rule = resolve_rule({"url": site_url, "id": row.get("site_id")}, parse_rules(self._site_rules))
+                    site_url = target_url(site_url, str(stored_rule["path"]), stored_rule.get("route_fragment"))
+                except ValueError:
+                    pass
             result = "签到成功" if row.get("status") in {"success", "already"} else str(row.get("message") or "-")
             rows.append({"component": "tr", "content": [
                 {"component": "td", "content": [{"component": "a", "props": {"href": site_url, "target": "_blank", "rel": "noopener noreferrer", "class": "text-primary text-decoration-none"}, "text": site_name}]} if site_url else {"component": "td", "text": site_name},
                 {"component": "td", "content": [{"component": "VChip", "props": {"size": "x-small", "variant": "tonal", "color": meta["color"], "prepend-icon": meta["icon"]}, "text": meta["label"]}]},
-                {"component": "td", "text": result},
                 {"component": "td", "text": str(row.get("ran_at") or "-")},
+                {"component": "td", "text": result},
             ]})
         return [
             {"component": "style", "text": ".captchasignin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.captchasignin-stat{padding:12px}.captchasignin-stat__label{color:rgba(var(--v-theme-on-surface),.62);font-size:.78rem}.captchasignin-stat__value{margin-top:6px;font-size:1.35rem;font-weight:700}.captchasignin-table-wrap{overflow-x:auto;border:1px solid rgba(var(--v-theme-on-surface),.08);border-radius:8px}.captchasignin-table{min-width:760px}.captchasignin-table th,.captchasignin-table td{padding:8px!important}"},
@@ -149,7 +155,7 @@ class CaptchaSignIn(_PluginBase):
                 self._stat("需要处理", str(failed), "请查看失败原因或更新 Cookie", "error" if failed else "success", "mdi-alert-circle-outline"),
             ]},
             {"component": "div", "props": {"class": "captchasignin-table-wrap mt-3"}, "content": [{"component": "VTable", "props": {"density": "compact", "hover": True, "class": "captchasignin-table"}, "content": [
-                {"component": "thead", "content": [{"component": "tr", "content": [{"component": "th", "text": "站点"}, {"component": "th", "text": "状态"}, {"component": "th", "text": "结果"}, {"component": "th", "text": "最后运行时间"}]}]},
+                {"component": "thead", "content": [{"component": "tr", "content": [{"component": "th", "text": "站点"}, {"component": "th", "text": "状态"}, {"component": "th", "text": "最后运行时间"}, {"component": "th", "text": "结果"}]}]},
                 {"component": "tbody", "content": rows},
             ]}]},
         ]
@@ -210,16 +216,19 @@ class CaptchaSignIn(_PluginBase):
     def _sign_one(self, site: Any, rules: Dict[str, Dict[str, Any]], signer: BrowserlessSigner) -> Dict[str, str]:
         info = self._site_dict(site)
         site_name = str(info.get("name") or info.get("url") or "未知站点")
+        sign_url = str(info.get("url") or "")
         logger.info("验证码站点签到：开始 %s", site_name)
         try:
-            outcome: SignResult = signer.sign(info, resolve_rule(info, rules))
+            rule = resolve_rule(info, rules)
+            sign_url = target_url(sign_url, str(rule["path"]), rule.get("route_fragment"))
+            outcome: SignResult = signer.sign(info, rule)
         except ValueError as error:
             outcome = SignResult("failed", str(error))
         except Exception:
             logger.exception("验证码站点签到失败：%s", info.get("name"))
             outcome = SignResult("failed", "签到执行出现未预期错误")
         logger.info("验证码站点签到：完成 %s（%s）", site_name, outcome.status)
-        return {"site": site_name, "url": str(info.get("url") or ""), "status": outcome.status, "message": outcome.message,
+        return {"site": site_name, "site_id": str(info.get("id") or ""), "url": sign_url, "status": outcome.status, "message": outcome.message,
                 "ran_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def _finish(self, results: List[Dict[str, str]]) -> None:
