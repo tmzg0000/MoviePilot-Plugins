@@ -73,6 +73,9 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "submit_method": "altcha_click",
         "submit_text": "立即签到",
         "already_keywords": ["已签到，明日继续", "你的今日状态：已签到"],
+        # The check-in view is client-rendered.  Allow it to render before
+        # preflight decides whether a repeat run can stop as already signed.
+        "preflight_wait": 8000,
         "wait": 5000,
     },
     "hdsky.me": {
@@ -87,6 +90,7 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "submit_selector": "#showupbutton",
         "submit_method": "dom_click",
         "submit_text": "Let's Go",
+        "success_keywords": ["已签到"],
     },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
     "mua.xloli.cc": {
@@ -316,7 +320,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
               "submit:click(selector:$selector){selector time}" if native_click else "submit:evaluate(content:$submit){value}")
 
 
-def build_preflight_query(user_agent: Optional[str] = None) -> str:
+def build_preflight_query(user_agent: Optional[str] = None, wait: int = 2000) -> str:
     """Read the page before a solver can fail on an absent post-sign-in CAPTCHA."""
     set_user_agent = "userAgent(userAgent:$userAgent){time}" if user_agent else ""
     user_agent_variable = " $userAgent:String!" if user_agent else ""
@@ -324,9 +328,9 @@ def build_preflight_query(user_agent: Optional[str] = None) -> str:
       %s
       cookies(cookies:$cookies){cookies{name}}
       goto(url:$url,waitUntil:domContentLoaded){status}
-      waitForTimeout(time:2000){time}
+      waitForTimeout(time:%s){time}
       before:html{html}
-    }""" % (user_agent_variable, set_user_agent)
+    }""" % (user_agent_variable, set_user_agent, max(1000, min(int(wait), 15000)))
 
 
 def page_text(html: str) -> str:
@@ -399,7 +403,8 @@ class BrowserlessSigner:
         preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target}
         if user_agent:
             preflight_variables["userAgent"] = user_agent
-        preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent))
+        preflight_wait = max(1000, min(int(rule.get("preflight_wait") or 2000), 15000))
+        preflight = self._request(preflight_variables, "CheckInPreflight", build_preflight_query(user_agent, preflight_wait))
         if isinstance(preflight, SignResult):
             return preflight
         if preflight.get("goto", {}).get("status") not in range(200, 400):
@@ -461,5 +466,8 @@ class BrowserlessSigner:
             return SignResult("failed", "Browserless 请求失败：%s" % str(exc))
         errors = value.get("errors") or []
         if errors:
-            return SignResult("failed", "Browserless 执行失败：" + str(errors[0].get("message") or "未知错误"))
+            message = str(errors[0].get("message") or "未知错误")
+            if "waiting for page navigation" in message.lower():
+                return SignResult("failed", "Browserless 页面导航超时；请检查该站是否可由当前 Browserless 节点访问")
+            return SignResult("failed", "Browserless 执行失败：" + message)
         return value.get("data") or {}

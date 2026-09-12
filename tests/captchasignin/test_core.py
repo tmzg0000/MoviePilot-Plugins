@@ -70,6 +70,13 @@ def test_yemapt_uses_hash_route_and_native_altcha_click_before_waiting_for_paylo
     assert "altcha:click(selector:$altchaSelector){selector time}" in query
     assert query.index("altcha:click") < query.index("submit:evaluate")
     assert core.classify("<p>你的今日状态：已签到</p>", rule).status == "already"
+    preflight = core.build_preflight_query(wait=rule["preflight_wait"])
+    assert "waitForTimeout(time:8000)" in preflight
+
+
+def test_hdsky_treats_its_signed_marker_as_success():
+    rule = core.resolve_rule({"url": "https://hdsky.me", "id": "hdsky"}, {})
+    assert core.classify("<p>已签到</p>", rule).status == "success"
 
 
 def test_hdsky_opens_its_dialog_before_solving_the_image_captcha():

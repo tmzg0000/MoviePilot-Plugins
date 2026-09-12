@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from apscheduler.triggers.cron import CronTrigger
@@ -28,7 +29,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.17"
+    plugin_version = "1.0.20"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -40,6 +41,8 @@ class CaptchaSignIn(_PluginBase):
     _cron = "15 8 * * *"
     _site_ids: List[int] = []
     _concurrency = 2
+    _retry_delay_minutes = 10
+    _retry_count = 1
     _browserless_url = DEFAULT_BROWSERLESS_URL
     _browserless_token = ""
     _site_rules = ""
@@ -52,6 +55,9 @@ class CaptchaSignIn(_PluginBase):
         self._cron = str(config.get("cron") or "15 8 * * *")
         self._site_ids = [int(value) for value in config.get("site_ids", []) if str(value).isdigit()]
         self._concurrency = max(1, min(int(config.get("concurrency") or 2), 5))
+        self._retry_delay_minutes = max(1, min(int(config.get("retry_delay_minutes") or 10), 1440))
+        retry_count = config.get("retry_count")
+        self._retry_count = max(0, min(int(1 if retry_count in (None, "") else retry_count), 5))
         self._browserless_url = str(config.get("browserless_url") or DEFAULT_BROWSERLESS_URL).strip()
         self._browserless_token = str(config.get("browserless_token") or "").strip()
         self._site_rules = str(config.get("site_rules") or "")
@@ -64,6 +70,7 @@ class CaptchaSignIn(_PluginBase):
     def _config(self) -> Dict[str, Any]:
         return {"enabled": self._enabled, "notify": self._notify, "cron": self._cron,
                 "site_ids": self._site_ids, "concurrency": self._concurrency,
+                "retry_delay_minutes": self._retry_delay_minutes, "retry_count": self._retry_count,
                 "browserless_url": self._browserless_url, "browserless_token": self._browserless_token,
                 "site_rules": self._site_rules, "run_once": self._run_once}
 
@@ -101,6 +108,10 @@ class CaptchaSignIn(_PluginBase):
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VCronField", "props": {"model": "cron", "label": "执行周期", "placeholder": "5 位 Cron；例如 15 8 * * *"}}]},
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "concurrency", "label": "并发数", "type": "number", "min": 1, "max": 5, "hint": "同时处理 1–5 个站点，建议 2", "persistent-hint": True}}]},
             ]},
+            {"component": "VRow", "content": [
+                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_delay_minutes", "label": "失败后等待分钟数", "type": "number", "min": 1, "max": 1440, "hint": "仅失败站点重试前等待；默认 10 分钟", "persistent-hint": True}}]},
+                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_count", "label": "失败后重试次数", "type": "number", "min": 0, "max": 5, "hint": "额外执行次数；0 为关闭，默认 1 次", "persistent-hint": True}}]},
+            ]},
             {"component": "VSelect", "props": {"model": "site_ids", "label": "签到站点", "items": options, "multiple": True, "chips": True, "hint": "仅显示已在 MoviePilot 保存 Cookie 的站点", "persistent-hint": True}},
             {"component": "VDivider", "props": {"class": "my-4"}},
             {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact", "text": "Browserless Token 仅保存在 MoviePilot 插件配置中，签到记录、日志和通知均不会包含 Token、Cookie 或验证码内容。"}},
@@ -121,20 +132,24 @@ class CaptchaSignIn(_PluginBase):
         rows = []
         for row in records:
             meta = self._status_meta(str(row.get("status") or ""))
+            site_name = str(row.get("site") or "未知站点")
+            site_url = str(row.get("url") or "").strip()
+            result = "签到成功" if row.get("status") in {"success", "already"} else str(row.get("message") or "-")
             rows.append({"component": "tr", "content": [
-                {"component": "td", "text": str(row.get("site") or "未知站点")},
+                {"component": "td", "content": [{"component": "a", "props": {"href": site_url, "target": "_blank", "rel": "noopener noreferrer", "class": "text-primary text-decoration-none"}, "text": site_name}]} if site_url else {"component": "td", "text": site_name},
                 {"component": "td", "content": [{"component": "VChip", "props": {"size": "x-small", "variant": "tonal", "color": meta["color"], "prepend-icon": meta["icon"]}, "text": meta["label"]}]},
-                {"component": "td", "text": str(row.get("message") or "-")},
+                {"component": "td", "text": result},
+                {"component": "td", "text": str(row.get("ran_at") or "-")},
             ]})
         return [
-            {"component": "style", "text": ".captchasignin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.captchasignin-stat{padding:12px}.captchasignin-stat__label{color:rgba(var(--v-theme-on-surface),.62);font-size:.78rem}.captchasignin-stat__value{margin-top:6px;font-size:1.35rem;font-weight:700}.captchasignin-table-wrap{overflow-x:auto;border:1px solid rgba(var(--v-theme-on-surface),.08);border-radius:8px}.captchasignin-table{min-width:620px}.captchasignin-table th,.captchasignin-table td{padding:8px!important}"},
+            {"component": "style", "text": ".captchasignin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.captchasignin-stat{padding:12px}.captchasignin-stat__label{color:rgba(var(--v-theme-on-surface),.62);font-size:.78rem}.captchasignin-stat__value{margin-top:6px;font-size:1.35rem;font-weight:700}.captchasignin-table-wrap{overflow-x:auto;border:1px solid rgba(var(--v-theme-on-surface),.08);border-radius:8px}.captchasignin-table{min-width:760px}.captchasignin-table th,.captchasignin-table td{padding:8px!important}"},
             {"component": "div", "props": {"class": "captchasignin-summary"}, "content": [
                 self._stat("本次站点", str(total), "已选择并完成处理", "info", "mdi-web"),
                 self._stat("成功或已签到", f"{success}/{total}", "无需重复签到", "success", "mdi-check-circle"),
                 self._stat("需要处理", str(failed), "请查看失败原因或更新 Cookie", "error" if failed else "success", "mdi-alert-circle-outline"),
             ]},
             {"component": "div", "props": {"class": "captchasignin-table-wrap mt-3"}, "content": [{"component": "VTable", "props": {"density": "compact", "hover": True, "class": "captchasignin-table"}, "content": [
-                {"component": "thead", "content": [{"component": "tr", "content": [{"component": "th", "text": "站点"}, {"component": "th", "text": "状态"}, {"component": "th", "text": "结果"}]}]},
+                {"component": "thead", "content": [{"component": "tr", "content": [{"component": "th", "text": "站点"}, {"component": "th", "text": "状态"}, {"component": "th", "text": "结果"}, {"component": "th", "text": "最后运行时间"}]}]},
                 {"component": "tbody", "content": rows},
             ]}]},
         ]
@@ -144,7 +159,7 @@ class CaptchaSignIn(_PluginBase):
         if status == "success":
             return {"label": "签到成功", "color": "success", "icon": "mdi-check-circle"}
         if status == "already":
-            return {"label": "今日已签到", "color": "info", "icon": "mdi-calendar-check"}
+            return {"label": "签到成功", "color": "success", "icon": "mdi-check-circle"}
         return {"label": "签到失败", "color": "error", "icon": "mdi-alert-circle"}
 
     @staticmethod
@@ -171,9 +186,22 @@ class CaptchaSignIn(_PluginBase):
             return
         logger.info("验证码站点签到：开始处理 %s 个站点", len(selected))
         signer = BrowserlessSigner(self._browserless_url, self._browserless_token)
-        with ThreadPoolExecutor(max_workers=min(self._concurrency, len(selected))) as executor:
-            results = list(executor.map(lambda site: self._sign_one(site, rules, signer), selected))
+        results = self._run_sites(selected, rules, signer)
+        result_by_site_id = {getattr(site, "id", None): result for site, result in zip(selected, results)}
+        for attempt in range(1, self._retry_count + 1):
+            failed_sites = [site for site in selected if result_by_site_id.get(getattr(site, "id", None), {}).get("status") == "failed"]
+            if not failed_sites:
+                break
+            logger.info("验证码站点签到：%s 个失败站点将在 %s 分钟后重试（第 %s/%s 次）", len(failed_sites), self._retry_delay_minutes, attempt, self._retry_count)
+            time.sleep(self._retry_delay_minutes * 60)
+            for site, result in zip(failed_sites, self._run_sites(failed_sites, rules, signer)):
+                result_by_site_id[getattr(site, "id", None)] = result
+        results = [result_by_site_id[getattr(site, "id", None)] for site in selected]
         self._finish(results)
+
+    def _run_sites(self, sites: List[Any], rules: Dict[str, Dict[str, Any]], signer: BrowserlessSigner) -> List[Dict[str, str]]:
+        with ThreadPoolExecutor(max_workers=min(self._concurrency, len(sites))) as executor:
+            return list(executor.map(lambda site: self._sign_one(site, rules, signer), sites))
 
     @staticmethod
     def _site_dict(site: Any) -> Dict[str, Any]:
@@ -191,9 +219,12 @@ class CaptchaSignIn(_PluginBase):
             logger.exception("验证码站点签到失败：%s", info.get("name"))
             outcome = SignResult("failed", "签到执行出现未预期错误")
         logger.info("验证码站点签到：完成 %s（%s）", site_name, outcome.status)
-        return {"site": site_name, "status": outcome.status, "message": outcome.message}
+        return {"site": site_name, "url": str(info.get("url") or ""), "status": outcome.status, "message": outcome.message,
+                "ran_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def _finish(self, results: List[Dict[str, str]]) -> None:
+        ran_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        results = [dict(item, ran_at=item.get("ran_at") or ran_at) for item in results]
         self.save_data("latest", results)
         self.save_data("history_" + datetime.now().strftime("%Y%m%d"), results)
         if self._notify:
