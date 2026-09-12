@@ -29,7 +29,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.23"
+    plugin_version = "1.0.24"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -148,7 +148,13 @@ class CaptchaSignIn(_PluginBase):
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_count", "label": "失败后重试次数", "type": "number", "min": 0, "max": 5, "hint": "额外执行次数；0 为关闭，默认 1 次", "persistent-hint": True}}]},
             ]},
             {"component": "VDivider", "props": {"class": "my-4"}},
-            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact", "text": "可配置最多 5 组 Browserless Token。每组 Token 只会用于其下选择的站点；同一站点重复选择时以靠前的组为准。Token、Cookie 和验证码内容均不会写入日志或签到记录。"}},
+            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact"}, "content": [
+                {"component": "span", "text": "可配置最多 5 组 Browserless Token。每组 Token 只会用于其下选择的站点；同一站点重复选择时以靠前的组为准。Token、Cookie 和验证码内容均不会写入日志或签到记录。首次使用请先 "},
+                {"component": "a", "props": {"href": "https://www.browserless.io/signup/email?plan=free", "target": "_blank", "rel": "noopener noreferrer"}, "text": "注册 Browserless 账号"},
+                {"component": "span", "text": "，登录 "},
+                {"component": "a", "props": {"href": "https://browserless.io/account/", "target": "_blank", "rel": "noopener noreferrer"}, "text": "账户控制台"},
+                {"component": "span", "text": "，在 API Key 区域复制 Token 后填入插件设置。"},
+            ]},
             {"component": "VRow", "content": [
                 {"component": "VCol", "props": {"cols": 12}, "content": [{"component": "VTextField", "props": {"model": "browserless_url", "label": "Browserless 地址", "placeholder": DEFAULT_BROWSERLESS_URL, "hint": "所有 Token 共用；可填写服务根地址或完整 /stealth/bql 地址", "persistent-hint": True}}]},
             ]},
@@ -177,12 +183,6 @@ class CaptchaSignIn(_PluginBase):
             meta = self._status_meta(str(row.get("status") or ""))
             site_name = str(row.get("site") or "未知站点")
             site_url = str(row.get("url") or "").strip()
-            if site_url:
-                try:
-                    stored_rule = resolve_rule({"url": site_url, "id": row.get("site_id")}, parse_rules(self._site_rules))
-                    site_url = target_url(site_url, str(stored_rule["path"]), stored_rule.get("route_fragment"))
-                except ValueError:
-                    pass
             result = "签到成功" if row.get("status") in {"success", "already"} else str(row.get("message") or "-")
             rows.append({"component": "tr", "content": [
                 {"component": "td", "content": [{"component": "a", "props": {"href": site_url, "target": "_blank", "rel": "noopener noreferrer", "class": "text-primary text-decoration-none"}, "text": site_name}]} if site_url else {"component": "td", "text": site_name},
