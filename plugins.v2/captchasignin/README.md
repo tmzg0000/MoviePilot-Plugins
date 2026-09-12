@@ -2,7 +2,7 @@
 
 MoviePilot V2/V3 通用的 PT 自动签到插件。插件使用 MoviePilot 已保存的站点 Cookie，并通过 Browserless BrowserQL 处理图片验证码、弹窗图片验证码、Cloudflare 页面挑战、Turnstile 与 Altcha。
 
-在插件设置中填写 Browserless 地址和 Token，选择已配置 Cookie 的站点。内置 OpenCD、包子、慕雪阁、LuckPT、OshenPT、YemaPT、HDSky、`dstudio.me`、`mua.xloli.cc` 与 `share.ilolicon.com` 的规则。包子在当天已经签到且验证码图片消失时会直接报告“已签到”。
+在插件设置中填写 Browserless 地址，并在 Token 1–5 卡片中分别输入 Token、选择使用该 Token 的已配置 Cookie 站点。一个站点只会执行一次；如果误选进多组，以靠前的 Token 组为准。旧版的单 Token 配置会自动迁移为 Token 1。内置 OpenCD、包子、慕雪阁、LuckPT、OshenPT、YemaPT、HDSky、`dstudio.me`、`mua.xloli.cc` 与 `share.ilolicon.com` 的规则。包子在当天已经签到且验证码图片消失时会直接报告“已签到”。
 
 ## Browserless 配置
 
@@ -34,6 +34,8 @@ HDSky 已内置弹窗图片验证码规则：先点击“签到”打开验证�
 结果页中的成功与已签到均显示“签到成功”；失败时保留详细错误。表格按“站点、状态、最后运行时间、结果”展示；站点名称可在新标签页直接打开对应签到页面，已有历史记录也会按内置规则自动换算。
 
 失败重试默认等待 10 分钟后额外执行 1 次，且只处理失败站点；可在设置中将重试次数设为 0–5 次，0 表示关闭重试。
+
+每个站点当天首次获得“签到成功”或“已签到”后，插件会将该状态保存到本地；当天后续任务直接跳过该站点，不再调用 Browserless。失败站点不会写入成功状态，仍会在后续任务与配置的失败重试中继续处理。
 
 慕雪阁无需 Cloudflare 或图片验证码；如配置过自定义规则，请删除该项以使用内置规则，或改为：
 

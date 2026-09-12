@@ -189,6 +189,14 @@ def target_url(base_url: str, path: str, route_fragment: Optional[str] = None) -
     return target.split("#", 1)[0] + (route_fragment or "")
 
 
+def site_state_key(site: Mapping[str, Any]) -> str:
+    site_id = str(site.get("id") or "").strip()
+    if site_id:
+        return "id:" + site_id
+    host = urllib.parse.urlparse(str(site.get("url") or "")).hostname
+    return "host:" + host.lower() if host else ""
+
+
 def cookie_objects(cookie_header: str, target_url: str) -> List[Dict[str, Any]]:
     parsed = urllib.parse.urlparse(target_url)
     domain = parsed.hostname

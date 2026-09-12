@@ -22,19 +22,20 @@ except ImportError:  # MoviePilot V2
 
 from app.schemas import NotificationType
 
-from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, SignResult, parse_rules, resolve_rule, target_url
+from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, SignResult, parse_rules, resolve_rule, site_state_key, target_url
 
 
 class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.21"
+    plugin_version = "1.0.23"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
     plugin_order = 30
     auth_level = 2
+    token_group_slots = 5
 
     _enabled = False
     _notify = True
@@ -45,6 +46,8 @@ class CaptchaSignIn(_PluginBase):
     _retry_count = 1
     _browserless_url = DEFAULT_BROWSERLESS_URL
     _browserless_token = ""
+    _token_groups: List[Dict[str, Any]] = []
+    _site_tokens: Dict[int, str] = {}
     _site_rules = ""
     _run_once = False
 
@@ -53,7 +56,13 @@ class CaptchaSignIn(_PluginBase):
         self._enabled = bool(config.get("enabled", False))
         self._notify = bool(config.get("notify", True))
         self._cron = str(config.get("cron") or "15 8 * * *")
-        self._site_ids = [int(value) for value in config.get("site_ids", []) if str(value).isdigit()]
+        self._token_groups = self._load_token_groups(config)
+        self._site_tokens = {}
+        for group in self._token_groups:
+            for site_id in group["site_ids"]:
+                # Keep the first assignment when a site was selected twice.
+                self._site_tokens.setdefault(site_id, group["token"])
+        self._site_ids = list(self._site_tokens)
         self._concurrency = max(1, min(int(config.get("concurrency") or 2), 5))
         self._retry_delay_minutes = max(1, min(int(config.get("retry_delay_minutes") or 10), 1440))
         retry_count = config.get("retry_count")
@@ -68,11 +77,37 @@ class CaptchaSignIn(_PluginBase):
             self.run_sign_in()
 
     def _config(self) -> Dict[str, Any]:
-        return {"enabled": self._enabled, "notify": self._notify, "cron": self._cron,
+        config = {"enabled": self._enabled, "notify": self._notify, "cron": self._cron,
                 "site_ids": self._site_ids, "concurrency": self._concurrency,
                 "retry_delay_minutes": self._retry_delay_minutes, "retry_count": self._retry_count,
                 "browserless_url": self._browserless_url, "browserless_token": self._browserless_token,
                 "site_rules": self._site_rules, "run_once": self._run_once}
+        for index in range(1, self.token_group_slots + 1):
+            group = self._token_groups[index - 1] if index <= len(self._token_groups) else {"token": "", "site_ids": []}
+            config[f"browserless_token_{index}"] = group["token"]
+            config[f"site_ids_{index}"] = group["site_ids"]
+        return config
+
+    @classmethod
+    def _load_token_groups(cls, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Load fixed UI slots and transparently retain the pre-1.0.23 config."""
+        groups = []
+        has_slot_config = any(
+            f"browserless_token_{index}" in config or f"site_ids_{index}" in config
+            for index in range(1, cls.token_group_slots + 1)
+        )
+        if has_slot_config:
+            for index in range(1, cls.token_group_slots + 1):
+                token = str(config.get(f"browserless_token_{index}") or "").strip()
+                site_ids = [int(value) for value in config.get(f"site_ids_{index}", []) if str(value).isdigit()]
+                if token or site_ids:
+                    groups.append({"token": token, "site_ids": site_ids})
+        else:
+            groups.append({
+                "token": str(config.get("browserless_token") or "").strip(),
+                "site_ids": [int(value) for value in config.get("site_ids", []) if str(value).isdigit()],
+            })
+        return groups
 
     def get_state(self) -> bool:
         return self._enabled
@@ -112,13 +147,21 @@ class CaptchaSignIn(_PluginBase):
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_delay_minutes", "label": "失败后等待分钟数", "type": "number", "min": 1, "max": 1440, "hint": "仅失败站点重试前等待；默认 10 分钟", "persistent-hint": True}}]},
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_count", "label": "失败后重试次数", "type": "number", "min": 0, "max": 5, "hint": "额外执行次数；0 为关闭，默认 1 次", "persistent-hint": True}}]},
             ]},
-            {"component": "VSelect", "props": {"model": "site_ids", "label": "签到站点", "items": options, "multiple": True, "chips": True, "hint": "仅显示已在 MoviePilot 保存 Cookie 的站点", "persistent-hint": True}},
             {"component": "VDivider", "props": {"class": "my-4"}},
-            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact", "text": "Browserless Token 仅保存在 MoviePilot 插件配置中，签到记录、日志和通知均不会包含 Token、Cookie 或验证码内容。"}},
+            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact", "text": "可配置最多 5 组 Browserless Token。每组 Token 只会用于其下选择的站点；同一站点重复选择时以靠前的组为准。Token、Cookie 和验证码内容均不会写入日志或签到记录。"}},
             {"component": "VRow", "content": [
-                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "browserless_url", "label": "Browserless 地址", "placeholder": DEFAULT_BROWSERLESS_URL, "hint": "可填写服务根地址或完整 /stealth/bql 地址", "persistent-hint": True}}]},
-                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "browserless_token", "label": "Browserless Token", "type": "password", "persistent-hint": True, "hint": "必填；不会写入日志"}}]},
+                {"component": "VCol", "props": {"cols": 12}, "content": [{"component": "VTextField", "props": {"model": "browserless_url", "label": "Browserless 地址", "placeholder": DEFAULT_BROWSERLESS_URL, "hint": "所有 Token 共用；可填写服务根地址或完整 /stealth/bql 地址", "persistent-hint": True}}]},
             ]},
+            *[
+                {"component": "VCard", "props": {"variant": "outlined", "class": "mb-3"}, "content": [
+                    {"component": "VCardTitle", "text": f"Token {index}"},
+                    {"component": "VCardText", "content": [{"component": "VRow", "content": [
+                        {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": f"browserless_token_{index}", "label": f"Browserless Token {index}", "type": "password", "hint": "留空则该组不会执行；不会写入日志", "persistent-hint": True}}]},
+                        {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VSelect", "props": {"model": f"site_ids_{index}", "label": f"使用 Token {index} 的签到站点", "items": options, "multiple": True, "chips": True, "hint": "仅显示已在 MoviePilot 保存 Cookie 的站点", "persistent-hint": True}}]},
+                    ]}]},
+                ]}
+                for index in range(1, self.token_group_slots + 1)
+            ],
                 {"component": "VTextarea", "props": {"model": "site_rules", "label": "自定义站点规则 JSON（可留空）", "rows": 10, "hint": "键使用域名或站点 ID；mode 为 image、trigger_image、cloudflare、open_page 或 altcha。内置 OpenCD、包子、LuckPT、OshenPT、YemaPT、HDSky 与 Cloudflare 站点规则。", "persistent-hint": True}},
         ]}], self._config()
 
@@ -177,37 +220,59 @@ class CaptchaSignIn(_PluginBase):
         ]}
 
     def run_sign_in(self) -> None:
-        if not self._browserless_url or not self._browserless_token:
-            self._finish([{"site": "配置", "status": "failed", "message": "未配置 Browserless 地址或 Token"}])
+        all_sites = {site.id: site for site in SiteOper().list_order_by_pri()}
+        selected = [(all_sites[site_id], self._site_tokens.get(site_id, "")) for site_id in self._site_ids if site_id in all_sites]
+        if not selected:
+            self._finish([{"site": "配置", "status": "failed", "message": "未选择可用的 MoviePilot 站点"}])
+            return
+        today = datetime.now().strftime("%Y%m%d")
+        daily_state = self.get_data("state_" + today) or {}
+        daily_state = daily_state if isinstance(daily_state, dict) else {}
+        if not daily_state:
+            for result in self.get_data("history_" + today) or []:
+                if not isinstance(result, dict):
+                    continue
+                state_key = str(result.get("state_key") or "id:" + str(result.get("site_id") or "").strip())
+                if result.get("status") in {"success", "already"} and state_key not in {"", "id:"}:
+                    daily_state[state_key] = result
+        pending, results = [], []
+        for site, token in selected:
+            previous = daily_state.get(site_state_key(self._site_dict(site)))
+            if isinstance(previous, dict) and previous.get("status") in {"success", "already"}:
+                results.append(dict(previous, message="今日已成功签到，已跳过 Browserless 调用"))
+            elif not token:
+                results.append({"site": str(getattr(site, "name", None) or getattr(site, "url", "未知站点")), "site_id": str(getattr(site, "id", "")), "status": "failed", "message": "该站点未配置 Browserless Token"})
+            else:
+                pending.append((site, token))
+        if not pending:
+            logger.info("验证码站点签到：%s 个站点今日已成功，跳过 Browserless 调用", len(results))
+            self._finish(results)
+            return
+        if not self._browserless_url:
+            self._finish(results + [{"site": "配置", "status": "failed", "message": "未配置 Browserless 地址"}])
             return
         try:
             rules = parse_rules(self._site_rules)
         except ValueError as error:
-            self._finish([{"site": "配置", "status": "failed", "message": str(error)}])
+            self._finish(results + [{"site": "配置", "status": "failed", "message": str(error)}])
             return
-        all_sites = {site.id: site for site in SiteOper().list_order_by_pri()}
-        selected = [all_sites[site_id] for site_id in self._site_ids if site_id in all_sites]
-        if not selected:
-            self._finish([{"site": "配置", "status": "failed", "message": "未选择可用的 MoviePilot 站点"}])
-            return
-        logger.info("验证码站点签到：开始处理 %s 个站点", len(selected))
-        signer = BrowserlessSigner(self._browserless_url, self._browserless_token)
-        results = self._run_sites(selected, rules, signer)
-        result_by_site_id = {getattr(site, "id", None): result for site, result in zip(selected, results)}
+        logger.info("验证码站点签到：%s 个站点今日已成功跳过，开始处理 %s 个站点", len(results), len(pending))
+        attempted = self._run_sites(pending, rules)
+        result_by_site_id = {getattr(site, "id", None): result for (site, _token), result in zip(pending, attempted)}
         for attempt in range(1, self._retry_count + 1):
-            failed_sites = [site for site in selected if result_by_site_id.get(getattr(site, "id", None), {}).get("status") == "failed"]
+            failed_sites = [assignment for assignment in pending if result_by_site_id.get(getattr(assignment[0], "id", None), {}).get("status") == "failed"]
             if not failed_sites:
                 break
             logger.info("验证码站点签到：%s 个失败站点将在 %s 分钟后重试（第 %s/%s 次）", len(failed_sites), self._retry_delay_minutes, attempt, self._retry_count)
             time.sleep(self._retry_delay_minutes * 60)
-            for site, result in zip(failed_sites, self._run_sites(failed_sites, rules, signer)):
+            for (site, _token), result in zip(failed_sites, self._run_sites(failed_sites, rules)):
                 result_by_site_id[getattr(site, "id", None)] = result
-        results = [result_by_site_id[getattr(site, "id", None)] for site in selected]
+        results.extend(result_by_site_id[getattr(site, "id", None)] for site, _token in pending)
         self._finish(results)
 
-    def _run_sites(self, sites: List[Any], rules: Dict[str, Dict[str, Any]], signer: BrowserlessSigner) -> List[Dict[str, str]]:
+    def _run_sites(self, sites: List[Tuple[Any, str]], rules: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]:
         with ThreadPoolExecutor(max_workers=min(self._concurrency, len(sites))) as executor:
-            return list(executor.map(lambda site: self._sign_one(site, rules, signer), sites))
+            return list(executor.map(lambda item: self._sign_one(item[0], rules, BrowserlessSigner(self._browserless_url, item[1])), sites))
 
     @staticmethod
     def _site_dict(site: Any) -> Dict[str, Any]:
@@ -228,14 +293,24 @@ class CaptchaSignIn(_PluginBase):
             logger.exception("验证码站点签到失败：%s", info.get("name"))
             outcome = SignResult("failed", "签到执行出现未预期错误")
         logger.info("验证码站点签到：完成 %s（%s）", site_name, outcome.status)
-        return {"site": site_name, "site_id": str(info.get("id") or ""), "url": sign_url, "status": outcome.status, "message": outcome.message,
+        return {"site": site_name, "site_id": str(info.get("id") or ""), "state_key": site_state_key(info), "url": sign_url, "status": outcome.status, "message": outcome.message,
                 "ran_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def _finish(self, results: List[Dict[str, str]]) -> None:
         ran_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         results = [dict(item, ran_at=item.get("ran_at") or ran_at) for item in results]
         self.save_data("latest", results)
-        self.save_data("history_" + datetime.now().strftime("%Y%m%d"), results)
+        today = datetime.now().strftime("%Y%m%d")
+        self.save_data("history_" + today, results)
+        daily_state = self.get_data("state_" + today) or {}
+        daily_state = daily_state if isinstance(daily_state, dict) else {}
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            state_key = str(result.get("state_key") or "id:" + str(result.get("site_id") or "").strip())
+            if result.get("status") in {"success", "already"} and state_key not in {"", "id:"}:
+                daily_state[state_key] = result
+        self.save_data("state_" + today, daily_state)
         if self._notify:
             summary = "\n".join("%s：%s - %s" % (item["site"], item["status"], item["message"]) for item in results)
             self.post_message(mtype=NotificationType.SiteMessage, title="验证码站点签到", text=summary)

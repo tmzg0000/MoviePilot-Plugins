@@ -83,6 +83,11 @@ def test_default_rules_produce_direct_sign_in_links():
     assert core.target_url("https://hdsky.me", hdsky["path"], hdsky.get("route_fragment")) == "https://hdsky.me/index.php"
 
 
+def test_site_state_key_prefers_moviepilot_id_and_falls_back_to_hostname():
+    assert core.site_state_key({"id": 42, "url": "https://pt.example.org"}) == "id:42"
+    assert core.site_state_key({"url": "https://PT.Example.org/attendance.php"}) == "host:pt.example.org"
+
+
 def test_hdsky_treats_its_signed_marker_as_success():
     rule = core.resolve_rule({"url": "https://hdsky.me", "id": "hdsky"}, {})
     assert core.classify("<p>已签到</p>", rule).status == "success"
