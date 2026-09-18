@@ -204,6 +204,15 @@ def test_opencd_ajax_success_is_not_lost_after_html_refresh():
     assert result == core.SignResult("success", "签到成功")
 
 
+def test_opencd_ajax_false_state_is_not_reported_as_success():
+    result = core.classify_ajax_response(
+        '{"status": 200, "text": "{\\"state\\": \\"false\\"}"}',
+        {"success_json": {"field": "/state", "values": ["success"]}},
+    )
+    assert result is not None
+    assert result.status == "failed"
+
+
 def test_signer_sends_site_user_agent_and_auto_cloudflare_query():
     captured = {}
 

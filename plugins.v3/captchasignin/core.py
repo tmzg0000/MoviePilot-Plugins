@@ -23,7 +23,7 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "captcha_input_selector": "#imagestring",
         "submit_selector": "#ok",
         "submit_method": "ajax",
-        "success_json": {"field": "/state", "values": ["success", "false"]},
+        "success_json": {"field": "/state", "values": ["success"]},
     },
     "p.t-baozi.cc": {
         "mode": "image",
