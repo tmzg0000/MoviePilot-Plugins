@@ -19,11 +19,15 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
     "open.cd": {
         "mode": "image",
         "path": "/plugin_sign-in.php",
+        "preflight_path": "/",
+        "verify_success_path": "/",
         "captcha_selector": "#frmSignin img",
         "captcha_input_selector": "#imagestring",
         "submit_selector": "#ok",
         "submit_method": "ajax",
         "success_json": {"field": "/state", "values": ["success"]},
+        "already_keywords": ["查看簽到記錄"],
+        "strict_status_keywords": True,
     },
     "p.t-baozi.cc": {
         "mode": "image",
@@ -291,6 +295,7 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
     image = rule["mode"] in {"image", "trigger_image"}
     triggered_image = rule["mode"] == "trigger_image"
     altcha = rule["mode"] == "altcha"
+    verifies_success = bool(rule.get("verify_success_path"))
     needs_solver = rule["mode"] in {"image", "trigger_image", "cloudflare"}
     native_click = str(rule.get("submit_method") or "click") == "click"
     solve = ("solve:solveImageCaptcha(captchaSelector:$captchaSelector,inputSelector:$captchaInputSelector,timeout:$solveTimeout){found solved time}"
@@ -305,6 +310,8 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
         variable_suffix += " $trigger:String! $triggerWait:Float!"
     if altcha:
         variable_suffix += " $altchaSelector:String!"
+    if verifies_success:
+        variable_suffix += " $verifyUrl:String!"
     if extra:
         variable_suffix += " " + extra
     variable_suffix += user_agent_variable
@@ -320,12 +327,14 @@ def build_query(rule: Mapping[str, Any], user_agent: Optional[str] = None) -> st
       %s
       waitAfter:waitForTimeout(time:$wait){time}
       response:evaluate(content:"JSON.stringify(window.__captchasignin_response || null)"){value}
+      %s
       after:html{html}
     }""" % (variable_suffix, set_user_agent,
               "trigger:evaluate(content:$trigger){value}\n      waitForTrigger:waitForTimeout(time:$triggerWait){time}" if triggered_image else "",
               "altcha:click(selector:$altchaSelector){selector time}" if altcha else "",
               solve,
-              "submit:click(selector:$selector){selector time}" if native_click else "submit:evaluate(content:$submit){value}")
+              "submit:click(selector:$selector){selector time}" if native_click else "submit:evaluate(content:$submit){value}",
+              "verify:goto(url:$verifyUrl,waitUntil:domContentLoaded){status}\n      verifyPage:html{html}" if verifies_success else "")
 
 
 def build_preflight_query(user_agent: Optional[str] = None, wait: int = 2000) -> str:
@@ -356,9 +365,13 @@ def classify(html: str, rule: Mapping[str, Any]) -> SignResult:
     lower = full_text.lower()
     if any(word.lower() in lower for word in LOGIN_WORDS) and "logout" not in lower:
         return SignResult("failed", "Cookie 无效或已过期")
-    if any(word.lower() in lower for word in rule.get("success_keywords", [])) or any(word in lower for word in SUCCESS_WORDS):
+    if any(word.lower() in lower for word in rule.get("success_keywords", [])):
         return SignResult("success", text or "签到成功")
-    if any(word.lower() in lower for word in rule.get("already_keywords", [])) or any(word in lower for word in ALREADY_WORDS):
+    if any(word.lower() in lower for word in rule.get("already_keywords", [])):
+        return SignResult("already", text or "今日已经签到")
+    if not rule.get("strict_status_keywords") and any(word in lower for word in SUCCESS_WORDS):
+        return SignResult("success", text or "签到成功")
+    if not rule.get("strict_status_keywords") and any(word in lower for word in ALREADY_WORDS):
         return SignResult("already", text or "今日已经签到")
     return SignResult("failed", text or "未识别到签到成功结果")
 
@@ -408,7 +421,8 @@ class BrowserlessSigner:
         # Always inspect the page before interacting.  A site may remove its
         # action button after either a successful sign-in or an already-signed
         # state; both must be terminal results, regardless of sign-in mode.
-        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": target}
+        preflight_target = target_url(base_url, str(rule.get("preflight_path") or rule["path"]))
+        preflight_variables: Dict[str, Any] = {"cookies": cookies, "url": preflight_target}
         if user_agent:
             preflight_variables["userAgent"] = user_agent
         preflight_wait = max(1000, min(int(rule.get("preflight_wait") or 2000), 15000))
@@ -437,6 +451,8 @@ class BrowserlessSigner:
             variables["solveTimeout"] = 60000
         if rule["mode"] in {"image", "trigger_image"}:
             variables.update({"captchaSelector": rule["captcha_selector"], "captchaInputSelector": rule["captcha_input_selector"]})
+        if rule.get("verify_success_path"):
+            variables["verifyUrl"] = target_url(base_url, str(rule["verify_success_path"]))
         if user_agent:
             variables["userAgent"] = user_agent
         data = self._request(variables, "CheckIn", build_query(rule, user_agent))
@@ -453,6 +469,13 @@ class BrowserlessSigner:
         if rule["mode"] in {"image", "trigger_image"} and submitted in (False, "false"):
             return SignResult("failed", "验证码未自动填入输入框，未发送签到请求")
         ajax_result = classify_ajax_response((data.get("response") or {}).get("value"), rule)
+        if rule.get("verify_success_path"):
+            if (data.get("verify") or {}).get("status") not in range(200, 400):
+                return SignResult("failed", "无法打开页面确认签到记录")
+            verified = classify(str((data.get("verifyPage") or {}).get("html") or ""), rule)
+            if verified.status in {"success", "already"}:
+                return SignResult("success", "已在首页确认签到记录")
+            return SignResult("failed", "首页未显示“查看簽到記錄”，未确认签到成功")
         if ajax_result:
             return ajax_result
         result = classify(str((data.get("after") or {}).get("html") or ""), rule)

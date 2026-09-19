@@ -213,6 +213,17 @@ def test_opencd_ajax_false_state_is_not_reported_as_success():
     assert result.status == "failed"
 
 
+def test_opencd_only_confirms_success_from_its_homepage_record_link():
+    rule = core.resolve_rule({"url": "https://open.cd", "id": "opencd"}, {})
+    assert rule["preflight_path"] == "/"
+    assert rule["verify_success_path"] == "/"
+    assert core.classify("<a>查看簽到記錄</a>", rule).status == "already"
+    assert core.classify("<p>簽到成功</p>", rule).status == "failed"
+    query = core.build_query(rule)
+    assert "$verifyUrl:String!" in query
+    assert "verify:goto(url:$verifyUrl,waitUntil:domContentLoaded){status}" in query
+
+
 def test_signer_sends_site_user_agent_and_auto_cloudflare_query():
     captured = {}
 
