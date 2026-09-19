@@ -77,5 +77,18 @@
       "v1.0.1": "修复 Browserless 签到请求中未使用的 GraphQL 变量导致执行失败。",
       "v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"
     }
+  },
+  "TelegramAutoSignIn": {
+    "name": "Telegram 自动签到",
+    "description": "定时通过 Telegram 用户会话向指定机器人发送签到命令，支持 MoviePilot 代理。",
+    "labels": "Telegram,签到,定时任务",
+    "version": "1.0.0",
+    "icon": "telegram.png",
+    "author": "tmzg0000",
+    "level": 2,
+    "system_version": ">=2.0.0,<3.0.0",
+    "history": {
+      "v1.0.0": "首次发布：支持 Telegram 用户会话、Cron 定时任务、MoviePilot 代理和执行记录。"
+    }
   }
 }

@@ -16,3 +16,12 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
   - V2：[`plugins.v2/captchasignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v2/captchasignin)
   - V3：[`plugins.v3/captchasignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/captchasignin)
+
+### [Telegram 自动签到](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/telegramautosignin)
+
+  支持 MoviePilot V2 与 V3。通过 Telegram 用户会话向少量指定机器人发送命令，并由 MoviePilot 的 Cron 定时任务运行。默认执行周期为北京时间每天 00:25、12:25、23:25；可在插件设置中调整。
+
+  填写 Telegram API ID、API Hash、Telethon StringSession 与机器人命令。命令格式为 `@bot1:/qd,@bot2:sign`，未写命令时默认发送 `/qd`。可选择复用 MoviePilot 的全局 HTTP 代理；通知开关默认关闭。StringSession 与 API Hash 是账户凭据，不能提交到仓库或写入日志。
+
+  - V2：[`plugins.v2/telegramautosignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v2/telegramautosignin)
+  - V3：[`plugins.v3/telegramautosignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/telegramautosignin)
