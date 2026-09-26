@@ -28,7 +28,7 @@ from pathlib import Path
 from .base.BaseTask import TaskResult
 
 
-class PTAutoTask(_PluginBase):
+class PTAutoTasker(_PluginBase):
     # 插件名称
     plugin_name = "PT自动任务助手"
     # 插件描述
@@ -36,7 +36,7 @@ class PTAutoTask(_PluginBase):
     # 插件图标
     plugin_icon = "signin.png"
     # 插件版本
-    plugin_version = "1.2.1"
+    plugin_version = "1.2.2"
     # 插件作者
     plugin_author = "tmzg0000"
     # 作者主页
