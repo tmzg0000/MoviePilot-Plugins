@@ -79,6 +79,19 @@
       "v1.0.0": "首次发布：图片验证码、Cloudflare、Turnstile 和站点预设。"
     }
   },
+  "PTAutoTasker": {
+    "name": "PT自动任务助手",
+    "description": "独立维护的 PT 站点签到、喊话与任务领取助手，避免上游插件更新覆盖本地任务支持。",
+    "labels": "站点,签到,任务,PT",
+    "version": "1.2.1",
+    "icon": "signin.png",
+    "author": "tmzg0000",
+    "level": 2,
+    "system_version": ">=2.0.0,<3.0.0",
+    "history": {
+      "v1.2.1": "从 PTAutoTask 独立为 PT自动任务助手，合并 18 个站点模块并使用独立配置前缀。"
+    }
+  },
   "TelegramAutoSignIn": {
     "name": "Telegram 自动签到",
     "description": "定时通过 Telegram 用户会话向指定机器人发送签到命令，支持 MoviePilot 代理。",
