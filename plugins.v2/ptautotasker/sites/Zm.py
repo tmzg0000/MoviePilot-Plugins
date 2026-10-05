@@ -2,7 +2,6 @@ import time
 
 from ..base.Decorator import task_info
 from ..base.NexusPHP import NexusPHP
-from lxml import etree
 from ..utils.custom_requests import CustomRequests
 from ..base.BaseTask import BaseTask
 
@@ -25,8 +24,6 @@ class Zm(NexusPHP):
     def get_site_domain():
         return "zmpt.cc"
 
-    def send_messagebox(self, message: str, callback=None) -> str:
-        return super().send_messagebox(message, lambda response: "")
 
     def medal_bonus(self):
         response = CustomRequests.get(self.bonus_url, headers=self.headers)
@@ -57,20 +54,7 @@ class Tasks(BaseTask):
     def __init__(self, cookie: str):
         super().__init__(Zm(cookie))
 
-    def daily_shotbox(self):
-        shbox_text_list = ["皮总，求电力", "皮总，求上传"]
-        rsp_text_list = []
-        for item in shbox_text_list:
-            self.client.send_messagebox(item)
-            time.sleep(3)
-            message_list = self.client.get_messagebox()
-            if message_list:
-                message = message_list[0]
-                rsp_text_list.append(message)
-        return "\n".join(rsp_text_list)
 
-    def daily_checkin(self):
-        return self.client.attendance()
 
     @task_info(label="织梦勋章奖励", hint="领取织梦站点的梅兰竹菊成套勋章奖励")
     def medal_bonus(self):

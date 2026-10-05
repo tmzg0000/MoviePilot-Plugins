@@ -32,9 +32,6 @@ class Tasks(BaseTask):
     def __init__(self, cookie: str):
         super().__init__(LemonHD(cookie))
 
-    def daily_checkin(self):
-        return self.client.attendance(
-            lambda response: "".join(etree.HTML(response.text).xpath('//table//tr/td/text()')).strip())
 
     @task_info(label="每日神游", hint="执行{client_name}站点的每日免费神游")
     def daily_lottery(self):

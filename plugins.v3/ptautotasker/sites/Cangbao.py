@@ -27,6 +27,3 @@ class Tasks(BaseTask):
     @task_info(label="藏宝阁任务领取", hint="领取藏宝阁站点的做种传奇任务")
     def daily_claim_task(self):
         return self.client.claim_task("12")
-
-    def daily_checkin(self):
-        return self.client.attendance()

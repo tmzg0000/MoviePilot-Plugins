@@ -24,9 +24,6 @@ class Vicomo(NexusPHP):
     def get_site_domain():
         return "ptvicomo.net"
 
-    def send_messagebox(self, message: str, callback=None) -> str:
-        return super().send_messagebox(message,
-                                       lambda response: "")
 
     def vs_boss(self):
         if datetime.date.today().weekday() in [0, 2]:
@@ -84,20 +81,7 @@ class Tasks(BaseTask):
     def __init__(self, cookie: str):
         super().__init__(Vicomo(cookie))
 
-    def daily_shotbox(self):
-        shbox_text_list = ["小象求象草"]
-        rsp_text_list = []
-        for item in shbox_text_list:
-            self.client.send_messagebox(item)
-            message_list = self.client.get_message_list()
-            if message_list:
-                message = message_list[1].get("topic", "")
-                rsp_text_list.append(message)
-                self.client.set_message_read(message_list[1].get("id", ""))
-        return "\n".join(rsp_text_list)
 
-    def daily_checkin(self):
-        return self.client.attendance()
 
     @task_info(label="打Boss", hint="执行象站的打Boss任务")
     def daily_vs_boss(self):

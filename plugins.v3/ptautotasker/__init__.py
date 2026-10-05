@@ -32,11 +32,11 @@ class PTAutoTasker(_PluginBase):
     # 插件名称
     plugin_name = "PT自动任务助手"
     # 插件描述
-    plugin_desc = "独立维护的 PT 站点签到、喊话与任务领取助手，避免上游插件更新覆盖本地任务支持。"
+    plugin_desc = "PT 站点任务领取、福利兑换、游戏与自动刮奖助手。"
     # 插件图标
     plugin_icon = "signin.png"
     # 插件版本
-    plugin_version = "1.2.2"
+    plugin_version = "1.2.5"
     # 插件作者
     plugin_author = "tmzg0000"
     # 作者主页

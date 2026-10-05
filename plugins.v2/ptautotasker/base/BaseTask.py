@@ -1,4 +1,3 @@
-from .Decorator import task_info
 import inspect
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -18,14 +17,6 @@ class TaskResult:
 class BaseTask:
     def __init__(self, client):
         self.client = client
-
-    @task_info(label="{client_name}签到", hint="执行{client_name}站点的签到任务")
-    def daily_checkin(self):
-        return self.client.attendance()
-
-    @task_info(label="{client_name}喊话", hint="执行{client_name}站点的喊话任务")
-    def daily_shotbox(self):
-        pass
 
     def _find_task_meta(self, name):
         """在类的 MRO 中查找首个定义了 _task_meta 的同名函数并返回其 meta"""

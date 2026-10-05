@@ -1,5 +1,4 @@
 from ..base.NexusPHP import NexusPHP
-from lxml import etree
 from ..base.Decorator import task_info
 from ..base.BaseTask import BaseTask
 
@@ -21,8 +20,6 @@ class Car(NexusPHP):
     def get_site_domain():
         return "carpt.net"
 
-    def send_messagebox(self, message: str, callback=None) -> str:
-        return super().send_messagebox(message)
 
     def claim_task(self, task_id: str, rt_method=None):
         return super().claim_task(task_id, lambda response: response.json().get("msg", "未知错误"))
@@ -39,6 +36,3 @@ class Tasks(BaseTask):
         if rsp == "认领人数已达上限":
             return self.fail(rsp)
         return self.ok(message=rsp)
-
-    def daily_checkin(self):
-        return self.client.attendance()

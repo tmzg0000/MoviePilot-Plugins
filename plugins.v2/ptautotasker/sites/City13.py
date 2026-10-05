@@ -31,6 +31,3 @@ class Tasks(BaseTask):
     @task_info(label="13City 每月做种任务", hint="领取 13city 的每月做种任务")
     def monthly_claim_task(self):
         return self.client.claim_task("6")
-
-    def daily_checkin(self):
-        return self.client.attendance()

@@ -110,6 +110,3 @@ class Tasks(BaseTask):
     @task_info(label="Vc-Lib每周魔力值任务领取", hint="领取Vc-Lib站点的每周魔力值任务")
     def weekly_bonus_claim(self):
         return self.client.claim_task("3")
-
-    def daily_checkin(self):
-        return self.client.attendance()

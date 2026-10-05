@@ -27,6 +27,3 @@ class Tasks(BaseTask):
     @task_info(label="Longpt每月保种领取(难)", hint="领取 Longpt 的每月保种任务（难）")
     def monthly_claim_task(self):
         return self.client.claim_task("2")
-
-    def daily_checkin(self):
-        return self.client.attendance()

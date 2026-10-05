@@ -31,6 +31,3 @@ class Tasks(BaseTask):
     @task_info(label="蟹黄堡任务领取", hint="领取蟹黄堡站点的力争全勤任务")
     def monthly_claim_task(self):
         return self.client.claim_task("11")
-
-    def daily_checkin(self):
-        return self.client.attendance()

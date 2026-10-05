@@ -34,22 +34,6 @@ class NexusPHP:
     def get_site_domain():
         raise NotImplementedError("Subclasses should implement this method to return the Domain.")
 
-    """
-    发送群聊区消息
-    """
-
-    def send_messagebox(self, message: str, rt_method: callable = None) -> str:
-        if rt_method is None:
-            rt_method = lambda response: " ".join(
-                etree.HTML(response.text).xpath("//tr[1]/td//text()"))
-        params = {
-            "shbox_text": message,
-            "shout": "%E6%88%91%E5%96%8A",
-            "sent": "yes",
-            "type": "shoutbox"
-        }
-        response = CustomRequests.get(self.url_shoutbox, headers=self.headers, params=params)
-        return rt_method(response)
 
     """
     获取群聊区消息
@@ -75,15 +59,6 @@ class NexusPHP:
         response = CustomRequests.post(self.url_ajax, headers=self.headers, data=data)
         return rt_method(response)
 
-    """
-    每日签到
-    """
-
-    def attendance(self, rt_method: callable = None):
-        if rt_method is None:
-            rt_method = lambda response: "".join(etree.HTML(response.text).xpath("//td/table//tr/td/p//text()"))
-        response = CustomRequests.get(self.attendance_url, headers=self.headers)
-        return rt_method(response)
 
     """
     获取邮件列表
