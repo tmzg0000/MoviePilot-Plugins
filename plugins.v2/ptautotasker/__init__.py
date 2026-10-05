@@ -31,7 +31,7 @@ class PTAutoTasker(_PluginBase):
     # 插件图标
     plugin_icon = "signin.png"
     # 插件版本
-    plugin_version = "1.2.5"
+    plugin_version = "1.2.7"
     # 插件作者
     plugin_author = "tmzg0000"
     # 作者主页
@@ -104,6 +104,8 @@ class PTAutoTasker(_PluginBase):
                 task_list = tasks.get_registered_tasks() if hasattr(tasks, "get_registered_tasks") else []
                 # 释放 tasks 实例,防止占用过多内存
                 del tasks
+                if not task_list:
+                    continue
                 sites_info.append({
                     "name": site_name,
                     "domain": site_url,
@@ -187,86 +189,51 @@ class PTAutoTasker(_PluginBase):
         return self.config_group_by_domain
 
     def __build_form_item(self, config):
-        title_json = {
-            'component': 'VRow',
+        name = config.get("name") or "未知"
+        switches = []
+        for task in config.get("tasks") or []:
+            label = task.get("label") or task.get("id")
+            if label.lower().startswith(name.lower()):
+                label = label[len(name):].strip() or label
+            switches.append({
+                'component': 'VSwitch',
+                'props': {
+                    'model': task.get("id"),
+                    'label': label,
+                    'density': 'compact',
+                    'hideDetails': True,
+                    'title': task.get("hint") or label,
+                    'class': 'ma-0 pa-0 flex-grow-0 flex-shrink-0',
+                    'style': 'min-height: 32px;'
+                }
+            })
+        if not switches:
+            return []
+        return [{
+            'component': 'div',
+            'props': {
+                'class': 'd-flex align-center',
+                'style': 'min-height: 36px; padding: 0; gap: 12px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);'
+            },
             'content': [
                 {
-                    'component': 'VCol',
-                    'props': {'cols': 12},
-                    'content': [
-                        {
-                            'component': 'div',
-                            'props': {
-                                'class': 'd-flex align-center mb-3'
-                            },
-                            'content': [
-                                {
-                                    'component': 'VIcon',
-                                    'props': {
-                                        'style': 'color: #1976D2;',
-                                        'class': 'mr-2'
-                                    },
-                                    'text': 'mdi-chart-box'
-                                },
-                                {
-                                    'component': 'span',
-                                    'props': {
-                                        'style': 'font-size: 1.1rem; font-weight: 500;'
-                                    },
-                                    'text': '{}站点设置'.format(config.get("name") if config.get("name") else "未知")
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        }
-        tasks = config.get("tasks", [])
-        cnt = len(tasks)
-        rows = []
-        for i in range(0, cnt, 3):
-            group = tasks[i:i + 3]
-            cols = 12 // len(group)
-            row = {
-                'component': 'VRow',
-                'props': {"align": "center"},
-                'content': [
-                    {
-                        'component': 'VCol',
-                        'props': {
-                            'cols': 12,
-                            'md': cols
-                        },
-                        'content': [
-                            {
-                                'component': 'VSwitch',
-                                'props': {
-                                    'model': task.get("id"),
-                                    'label': task.get("label"),
-                                    'hint': task.get("hint")
-                                }
-                            }
-                        ]
-                    } for task in group
-                ]
-            }
-            rows.append(row)
-        divider = {
-            'component': 'VRow',
-            'content': [
+                    'component': 'span',
+                    'props': {
+                        'title': config.get("domain") or name,
+                        'style': 'width: 90px; flex: 0 0 90px; font-size: 0.875rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'
+                    },
+                    'text': name
+                },
                 {
-                    'component': 'VCol',
-                    'props': {'cols': 12},
-                    'content': [
-                        {
-                            'component': 'VDivider',
-                            'props': {'class': 'my-3'}
-                        }
-                    ]
+                    'component': 'div',
+                    'props': {
+                        'class': 'd-flex align-center',
+                        'style': 'flex: 1; min-width: 0; gap: 16px; flex-wrap: nowrap; overflow-x: auto;'
+                    },
+                    'content': switches
                 }
             ]
-        }
-        return [title_json] + rows + [divider]
+        }]
 
     def __build_form(self):
         """
@@ -278,7 +245,8 @@ class PTAutoTasker(_PluginBase):
             {
                 'component': 'VCardTitle',
                 'props': {
-                    'class': 'd-flex align-center'
+                    'class': 'd-flex align-center py-2 px-3',
+                    'style': 'font-size: 0.95rem;'
                 },
                 'content': [
                     {
@@ -310,6 +278,7 @@ class PTAutoTasker(_PluginBase):
         components.extend(head_components)
         components.append({
             'component': 'VCardText',
+            'props': {'class': 'py-1 px-3'},
             'content': site_sections
         })
 
