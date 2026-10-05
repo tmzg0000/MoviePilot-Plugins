@@ -36,7 +36,7 @@ class PTAutoTasker(_PluginBase):
     # 插件图标
     plugin_icon = "signin.png"
     # 插件版本
-    plugin_version = "1.2.7"
+    plugin_version = "1.2.8"
     # 插件作者
     plugin_author = "tmzg0000"
     # 作者主页
@@ -200,17 +200,38 @@ class PTAutoTasker(_PluginBase):
             label = task.get("label") or task.get("id")
             if label.lower().startswith(name.lower()):
                 label = label[len(name):].strip() or label
+            hint = task.get("hint") or label
             switches.append({
-                'component': 'VSwitch',
+                'component': 'div',
                 'props': {
-                    'model': task.get("id"),
-                    'label': label,
-                    'density': 'compact',
-                    'hideDetails': True,
-                    'title': task.get("hint") or label,
-                    'class': 'ma-0 pa-0 flex-grow-0 flex-shrink-0',
+                    'class': 'd-flex align-center flex-grow-0 flex-shrink-0',
                     'style': 'min-height: 32px;'
-                }
+                },
+                'content': [
+                    {
+                        'component': 'VSwitch',
+                        'props': {
+                            'model': task.get("id"),
+                            'label': label,
+                            'density': 'compact',
+                            'hideDetails': True,
+                            'class': 'ma-0 pa-0',
+                            'style': 'min-height: 32px;'
+                        }
+                    },
+                    {
+                        'component': 'VTooltip',
+                        'props': {
+                            'activator': 'parent',
+                            'location': 'top',
+                            'openOnHover': True,
+                            'openOnFocus': True,
+                            'openDelay': 200,
+                            'maxWidth': 420
+                        },
+                        'text': hint
+                    }
+                ]
             })
         if not switches:
             return []
@@ -233,7 +254,7 @@ class PTAutoTasker(_PluginBase):
                     'component': 'div',
                     'props': {
                         'class': 'd-flex align-center',
-                        'style': 'flex: 1; min-width: 0; gap: 16px; flex-wrap: nowrap; overflow-x: auto;'
+                        'style': 'flex: 1 1 0; min-width: 0; gap: 16px; flex-wrap: nowrap; overflow-x: auto; padding-inline: 12px; box-sizing: border-box;'
                     },
                     'content': switches
                 }
@@ -311,7 +332,7 @@ class PTAutoTasker(_PluginBase):
         if config:
             self._enabled = config.get("enabled", False)
             self._notify = config.get("notify", False)
-            self._cron = config.get("cron", "30 9,21 * * *")
+            self._cron = config.get("cron", "8 0,9,21 * * *")
             self._onlyonce = config.get("onlyonce", False)
             self._history_days = config.get("history_days", 30)
             # 站点个性化配置属性
@@ -448,6 +469,24 @@ class PTAutoTasker(_PluginBase):
                     logger.debug(f"任务 {task_id} 被配置为禁用，跳过")
                     return None, None, None
 
+                run_time = datetime.now(tz=pytz.timezone(settings.TZ))
+                run_day = run_time.strftime('%Y-%m-%d')
+                if task_id == "tangpt_daily_slots":
+                    completed = self.get_data("tangpt_slots_completed") or {}
+                    if completed.get("date") == run_day and completed.get("domain") == domain:
+                        status = "今日老虎机已成功完成2次，跳过"
+                        logger.info(f"{site_name} - {status}")
+                        return {
+                            "date": run_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            "site": site_name,
+                            "domain": domain,
+                            "task_id": task_id,
+                            "task_label": task.get("label"),
+                            "status": status,
+                            "success": True,
+                            "skipped": True,
+                        }, f"⏭️ {task.get('label') or task_id}: {status}", False
+
                 func_obj = inspect.unwrap(task.get("func")) if task.get("func") else None
                 if not func_obj:
                     logger.warning(f"任务 {task_id} 未包含可执行函数，跳过")
@@ -494,6 +533,13 @@ class PTAutoTasker(_PluginBase):
 
                     status_text = convert_result_to_status(result)
                     failed = not result.success if isinstance(result, TaskResult) else is_fail(status_text)
+
+                    if (task_id == "tangpt_daily_slots" and isinstance(result, TaskResult)
+                            and result.success and result.data.get("count") == 2):
+                        # 成功即持久保存，后续调度与插件重启均可跳过；失败不标记。
+                        self.save_data(key="tangpt_slots_completed", value={
+                            "date": run_day, "domain": domain
+                        })
 
                     record = {
                         "date": now_str,
@@ -766,8 +812,8 @@ class PTAutoTasker(_PluginBase):
                                                         'props': {
                                                             'model': 'cron',
                                                             'label': '执行周期',
-                                                            'placeholder': '30 9,21 * * *',
-                                                            'hint': '五位cron表达式，每天9:30与21:30执行'
+                                                            'placeholder': '8 0,9,21 * * *',
+                                                            'hint': '五位cron表达式，每天00:08、09:08与21:08执行'
                                                         }
                                                     }
                                                 ]
@@ -976,7 +1022,7 @@ class PTAutoTasker(_PluginBase):
         ], {
             "enabled": False,
             "notify": True,
-            "cron": "30 9,21 * * *",
+            "cron": "8 0,9,21 * * *",
             "onlyonce": False,
             "history_days": 30,
             # # 站点-Car
@@ -1036,28 +1082,28 @@ class PTAutoTasker(_PluginBase):
         # 顶部统计卡片
         header_card = {
             'component': 'VCard',
-            'props': {'variant': 'outlined', 'class': 'mb-4'},
+            'props': {'variant': 'outlined', 'class': 'mb-2'},
             'content': [
                 {
                     'component': 'VCardTitle',
-                    'props': {'class': 'd-flex align-center'},
+                    'props': {'class': 'd-flex align-center flex-wrap py-1 px-3', 'style': 'font-size: 0.9rem; gap: 4px;'},
                     'content': [
                         {'component': 'VIcon', 'props': {'class': 'mr-2'}, 'text': 'mdi-chart-box'},
                         {'component': 'span', 'text': '运行统计概览'},
                         {'component': 'VSpacer'},
                         {
                             'component': 'VChip',
-                            'props': {'size': 'small', 'variant': 'elevated', 'class': 'ma-1'},
+                            'props': {'size': 'x-small', 'variant': 'elevated', 'class': 'my-0 mx-1'},
                             'text': f'站点: {supported_sites}'
                         },
                         {
                             'component': 'VChip',
-                            'props': {'size': 'small', 'variant': 'elevated', 'class': 'ma-1'},
+                            'props': {'size': 'x-small', 'variant': 'elevated', 'class': 'my-0 mx-1'},
                             'text': f'任务: {supported_tasks}'
                         },
                         {
                             'component': 'VChip',
-                            'props': {'size': 'small', 'variant': 'elevated', 'color': 'primary', 'class': 'ma-1'},
+                            'props': {'size': 'x-small', 'variant': 'elevated', 'color': 'primary', 'class': 'my-0 mx-1'},
                             'text': f'启用: {enabled_tasks}'
                         }
                     ]
@@ -1065,39 +1111,41 @@ class PTAutoTasker(_PluginBase):
                 {'component': 'VDivider'},
                 {
                     'component': 'VCardText',
+                    'props': {'class': 'py-2 px-3'},
                     'content': [
                         {
                             'component': 'VRow',
+                            'props': {'noGutters': True},
                             'content': [
                                 {
                                     'component': 'VCol',
-                                    'props': {'cols': 12, 'md': 4},
+                                    'props': {'cols': 12, 'md': 4, 'class': 'py-0 pr-2'},
                                     'content': [
                                         {
                                             'component': 'div',
-                                            'props': {'class': 'text-subtitle-1'},
+                                            'props': {'class': 'text-body-2'},
                                             'text': f'最近一次（{history[0]["date"] if history else "无记录"}）: 成功 {last_run_success} / 失败 {last_run_fail}'
                                         }
                                     ]
                                 },
                                 {
                                     'component': 'VCol',
-                                    'props': {'cols': 12, 'md': 4},
+                                    'props': {'cols': 12, 'md': 4, 'class': 'py-0 pr-2'},
                                     'content': [
                                         {
                                             'component': 'div',
-                                            'props': {'class': 'text-subtitle-1'},
+                                            'props': {'class': 'text-body-2'},
                                             'text': f'历史总计: 成功 {total_success} / 失败 {total_fail}'
                                         }
                                     ]
                                 },
                                 {
                                     'component': 'VCol',
-                                    'props': {'cols': 12, 'md': 4},
+                                    'props': {'cols': 12, 'md': 4, 'class': 'py-0 pr-2'},
                                     'content': [
                                         {
                                             'component': 'div',
-                                            'props': {'class': 'text-subtitle-1'},
+                                            'props': {'class': 'text-body-2'},
                                             'text': f'重试配置: {self._retry_count or 0} 次, 间隔 {self._retry_interval} 小时'
                                         }
                                     ]
@@ -1134,48 +1182,30 @@ class PTAutoTasker(_PluginBase):
                 recs = sites_map.get(site, [])
                 # site header
                 site_block = {
-                    'component': 'VCard',
-                    'props': {'variant': 'outlined', 'class': 'mb-2'},
+                    'component': 'div',
+                    'props': {
+                        'class': 'd-flex align-start py-1',
+                        'style': 'gap: 12px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);'
+                    },
                     'content': [
                         {
-                            'component': 'VCardTitle',
-                            'props': {'class': 'd-flex align-center'},
-                            'content': [
-                                {'component': 'VIcon', 'props': {'class': 'mr-2'}, 'text': 'mdi-bell-ring'},
-                                {'component': 'span', 'text': site},
-                                {'component': 'VSpacer'},
-                                {
-                                    'component': 'VChip',
-                                    'props': {'size': 'small', 'variant': 'elevated'},
-                                    'text': f'任务数: {len(recs)}'
-                                }
-                            ]
+                            'component': 'span',
+                            'props': {
+                                'style': 'width: 90px; flex: 0 0 90px; font-size: 0.875rem; font-weight: 500; line-height: 22px; overflow-wrap: anywhere;'
+                            },
+                            'text': site
                         },
-                        {'component': 'VDivider'},
                         {
-                            'component': 'VCardText',
+                            'component': 'div',
+                            'props': {'style': 'flex: 1; min-width: 0;'},
                             'content': [
                                 {
-                                    'component': 'VList',
-                                    'props': {'dense': True},
-                                    'content': [
-                                        {
-                                            'component': 'VListItem',
-                                            'content': [
-                                                {
-                                                    'component': 'div',
-                                                    'props': {'class': 'ml-0'},
-                                                    'content': [
-                                                        {
-                                                            'component': 'div',
-                                                            'text': f"{'✅' if not is_fail(r.get('status', '')) else '❌'}  {r.get('task_label') or r.get('task_id')}: {r.get('status', '')}"
-                                                        }
-                                                    ]
-                                                }
-                                            ]
-                                        } for r in recs
-                                    ]
-                                }
+                                    'component': 'div',
+                                    'props': {
+                                        'style': 'font-size: 0.875rem; line-height: 22px; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere;'
+                                    },
+                                    'text': f"{'✅' if not is_fail(r.get('status', '')) else '❌'} {r.get('task_label') or r.get('task_id')}: {r.get('status', '')}"
+                                } for r in recs
                             ]
                         }
                     ]
@@ -1185,22 +1215,22 @@ class PTAutoTasker(_PluginBase):
             # 面板标题（简洁汇总）
             panel_title = {
                 'component': 'div',
-                'props': {'class': 'd-flex align-center'},
+                'props': {'class': 'd-flex align-center flex-wrap', 'style': 'gap: 4px;'},
                 'content': [
-                    {'component': 'span', 'text': run_date, 'props': {'class': 'mr-4'}},
+                    {'component': 'span', 'text': run_date, 'props': {'class': 'mr-2'}},
                     {
                         'component': 'VChip',
-                        'props': {'size': 'small', 'variant': 'elevated', 'class': 'ma-1'},
+                        'props': {'size': 'x-small', 'variant': 'elevated', 'class': 'my-0 mx-1'},
                         'text': f'启用: {run_enabled}'
                     },
                     {
                         'component': 'VChip',
-                        'props': {'size': 'small', 'variant': 'elevated', 'color': 'success', 'class': 'ma-1'},
+                        'props': {'size': 'x-small', 'variant': 'elevated', 'color': 'success', 'class': 'my-0 mx-1'},
                         'text': f'成功: {run_success}'
                     },
                     {
                         'component': 'VChip',
-                        'props': {'size': 'small', 'variant': 'elevated', 'color': 'error', 'class': 'ma-1'},
+                        'props': {'size': 'x-small', 'variant': 'elevated', 'color': 'error', 'class': 'my-0 mx-1'},
                         'text': f'失败: {run_fail}'
                     }
                 ]
@@ -1212,10 +1242,12 @@ class PTAutoTasker(_PluginBase):
                 'content': [
                     {
                         'component': 'VExpansionPanelTitle',
+                        'props': {'class': 'py-1 px-3', 'style': 'min-height: 36px;'},
                         'content': [panel_title]
                     },
                     {
                         'component': 'VExpansionPanelText',
+                        'props': {'style': '--v-expansion-panel-text-padding: 4px 12px 8px;'},
                         'content': site_blocks or [
                             {'component': 'div', 'text': '无详细记录'}
                         ]
@@ -1225,11 +1257,11 @@ class PTAutoTasker(_PluginBase):
 
         history_section = {
             'component': 'VCard',
-            'props': {'variant': 'outlined', 'class': 'mb-4'},
+            'props': {'variant': 'outlined', 'class': 'mb-2'},
             'content': [
                 {
                     'component': 'VCardTitle',
-                    'props': {'class': 'd-flex align-center'},
+                    'props': {'class': 'd-flex align-center flex-wrap py-1 px-3', 'style': 'gap: 4px; font-size: 0.9rem;'},
                     'content': [
                         {'component': 'VIcon', 'props': {'class': 'mr-2'}, 'text': 'mdi-history'},
                         {'component': 'span', 'text': '执行历史记录'},
@@ -1240,10 +1272,11 @@ class PTAutoTasker(_PluginBase):
                 {'component': 'VDivider'},
                 {
                     'component': 'VCardText',
+                    'props': {'class': 'py-2 px-3'},
                     'content': [
                         {
                             'component': 'VExpansionPanels',
-                            'props': {'accordion': True},
+                            'props': {'variant': 'accordion'},
                             'content': panels if panels else [
                                 {'component': 'div', 'text': '暂无历史记录'}
                             ]
@@ -1266,7 +1299,7 @@ class PTAutoTasker(_PluginBase):
             avatar_url = user_info['data']['attributes'].get('avatarUrl', '')
             user_card = {
                 'component': 'VCard',
-                'props': {'variant': 'outlined', 'class': 'mb-4'},
+                'props': {'variant': 'outlined', 'class': 'mb-2'},
                 'content': [
                     {'component': 'VCardTitle', 'content': [{'component': 'span', 'text': username}]},
                     {'component': 'VDivider'},

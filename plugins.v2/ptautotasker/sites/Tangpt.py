@@ -143,7 +143,7 @@ class Tasks(BaseTask):
             # 请求可能已生效，不在本轮重发。
             return self.fail(message=f"{summary()}；请求异常，已停止：{exc}", data=stats)
 
-    @task_info(label="躺平每日2次老虎机", hint="执行2次老虎机，倍率1（可能消耗站点余额）；间隔1秒，自动更新Token，失败停止")
+    @task_info(label="躺平每日2次老虎机", hint="每天成功完成2次后跳过当天后续任务；倍率1（可能消耗站点余额），间隔1秒，自动更新Token，失败停止")
     def daily_slots(self):
         stats = {"count": 0, "payout": 0, "spins": []}
 
