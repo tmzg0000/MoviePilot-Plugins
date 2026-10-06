@@ -49,7 +49,7 @@
     "labels": "签到,GlaDOS,VPN",
     "version": "3.6.0",
     "icon": "https://raw.githubusercontent.com/madrays/MoviePilot-Plugins/main/icons/glados.png",
-    "author": "madrays",
+    "author": "tmzg0000",
     "level": 2,
     "history": {
       "v3.6.0": "修复跨设备签到：请求头改用凭证记录的登录设备 UA（此前硬编码 macOS 导致 Windows 等设备必报 code=4 device-mismatch），并同步 sec-ch-ua-platform",

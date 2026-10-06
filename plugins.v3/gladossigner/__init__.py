@@ -27,8 +27,8 @@ class gladossigner(_PluginBase):
     plugin_desc = "每日签到获取点数；积累点数可兑换 10~100 天套餐时长"
     plugin_icon = "https://raw.githubusercontent.com/madrays/MoviePilot-Plugins/main/icons/glados.png"
     plugin_version = "3.6.0"
-    plugin_author = "madrays"
-    author_url = "https://github.com/madrays"
+    plugin_author = "tmzg0000"
+    author_url = "https://github.com/tmzg0000"
     plugin_config_prefix = "gladossigner_"
     plugin_order = 1
     auth_level = 2
@@ -39,6 +39,7 @@ class gladossigner(_PluginBase):
     _cron = "0 9 * * *"
     _base_url = "https://glados.cloud"
     _cookie = ""
+    _cookie_curl = ""
     _auth_bundle = ""
     _bundle_meta: Dict[str, Any] = {}
     _device_id = ""
@@ -65,7 +66,7 @@ class gladossigner(_PluginBase):
     # 里与站点原始实现对照通过）。执行后自动算出设备指纹、识别登录域名、生成凭证 JSON，
     # 并在页面底部弹出中性风格的分步指引面板（含 Cookie 手动复制指引与兜底复制按钮）。
     _DEVICE_ID_HELPER = (
-        "(async()=>{ function H(a,b=0){let n=3735928559^b,r=1103547991^b;for(let i=0,t;i<a.length;i++){t=a.charCodeAt(i);n=Math.imul(n^t,2654435761);r=Math.imul(r^t,1597334677)}n=Math.imul(n^n>>>16,2246822507)^Math.imul(r^r>>>13,3266489909);r=Math.imul(r^r>>>16,2246822507)^Math.imul(n^n>>>13,3266489909);return 4294967296*(2097151&r)+(n>>>0)+\"\"} function cyrb53(a,b=0){return H(a.slice(0,a.length/2|0),b)+\"\"+H(a.slice(a.length/2|0),b)} function cf(){try{const c=document.createElement(\"canvas\"),x=c.getContext(\"2d\"),t=\"abz190#$%^@\\u00a3\\u00e9\\u00faGLaDOS!6.5[-%-&*]@345876 <canvas>\";x.textBaseline=\"top\";x.font=\"32px 'Arial'\";x.textBaseline=\"alphabetic\";x.fillStyle=\"#f1680e\";x.fillRect(125,1,62,20);x.fillStyle=\"#0c6d9e\";x.fillText(t,2,15);x.fillStyle=\"rgba(102, 204, 0, 0.7)\";x.fillText(t,4,17);x.fillStyle=\"rgba(12, 24, 10, 0.2)\";x.fillText(t,10,107);x.rotate(.03);x.fillText(t,4,17);x.fillStyle=\"rgb(155,255,5)\";x.shadowBlur=8;x.shadowColor=\"red\";x.fillRect(20,12,100,5);return c.toDataURL()}catch(e){return screen.height+\"x\"+screen.width}} function af(){return new Promise((ok,no)=>{try{const O=window.OfflineAudioContext||window.webkitOfflineAudioContext,ctx=new O(1,44100,44100),t=ctx.currentTime,osc=ctx.createOscillator(),comp=ctx.createDynamicsCompressor();osc.type=\"triangle\";osc.frequency.setValueAtTime(1e4,t);const set=(k,v)=>{try{if(comp[k]&&typeof comp[k].setValueAtTime===\"function\")comp[k].setValueAtTime(v,t)}catch(e){}};set(\"threshold\",-50);set(\"knee\",40);set(\"ratio\",12);set(\"reduction\",-20);set(\"attack\",0);set(\"release\",.25);osc.connect(comp);comp.connect(ctx.destination);osc.start(0);ctx.startRendering();ctx.oncomplete=ev=>{let s=0;for(let i=4500;i<5e3;i++)s+=Math.abs(ev.renderedBuffer.getChannelData(0)[i]);ok(s.toString())}}catch(e){no(e)}})} let ab=\"\";try{ab=btoa(await af())}catch(e){} const device=cyrb53(ab+cf())+\"-\"+window.screen.height+\"-\"+window.screen.width; const cookie=document.cookie||\"\"; const host=location.host; const bundle=JSON.stringify({v:1,cookie:cookie,device:device,domain:host,screen:window.screen.width+\"x\"+window.screen.height,ua:navigator.userAgent,at:new Date().toISOString()}); const copyText=(text)=>{let done=false;try{const ta=document.createElement(\"textarea\");ta.value=text;ta.setAttribute(\"readonly\",\"\");ta.style.cssText=\"position:fixed;top:0;left:-9999px;opacity:0\";document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,text.length);done=document.execCommand(\"copy\");document.body.removeChild(ta)}catch(e){}if(!done){try{navigator.clipboard.writeText(text);done=true}catch(e){}}return done}; const copied=copyText(bundle); const esc=(s)=>String(s).replace(/&/g,\"&amp;\").replace(/</g,\"&lt;\"); const old=document.getElementById(\"__glados_fp__\");if(old)old.remove(); const w=document.createElement(\"div\");w.id=\"__glados_fp__\"; w.style.cssText=\"position:fixed;z-index:2147483647;left:16px;right:16px;bottom:16px;max-width:760px;margin:0 auto;box-sizing:border-box;background:#151719;color:#e6e8eb;border:1px solid #2b2f33;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.45);font:14px/1.6 -apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;max-height:78vh;overflow:auto\"; const sec=\"padding:14px 18px;border-top:1px solid #24282c\"; const lbl=\"font-size:12px;letter-spacing:.4px;color:#8b9299;margin:0 0 4px\"; const mono=\"font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace\"; w.innerHTML= \"<div style='display:flex;align-items:center;gap:10px;padding:14px 18px'>\" +\"<span style='width:7px;height:7px;border-radius:50%;background:\"+(copied?\"#4ea1ff\":\"#d9a441\")+\";flex:none'></span>\" +\"<span style='font-weight:600;font-size:15px'>\"+(copied?\"凭证已生成，已尝试复制\":\"凭证已生成，请点下方按钮复制\")+\"</span>\" +\"<span style='margin-left:auto;color:#8b9299;font-size:12.5px'>\"+esc(host)+\"</span>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='\"+lbl+\"'>设备指纹</div>\" +\"<div style='\"+mono+\";color:#9ecbff;word-break:break-all'>\"+esc(device)+\"</div>\" +\"<div style='\"+lbl+\";margin-top:10px'>自动读到的 Cookie</div>\" +\"<div style='\"+mono+\";color:\"+(cookie?\"#e6e8eb\":\"#d9a441\")+\"'>\"+(cookie?esc(cookie):\"（空 —— 站点使用 HttpOnly Cookie，脚本无法读取）\")+\"</div>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='font-weight:600;margin:0 0 8px'>还需要你手动做一次：复制 Cookie</div>\" +\"<ol style='margin:0;padding-left:20px;color:#c3c8cd'>\" +\"<li style='margin:3px 0'>F12 → <b style='color:#e6e8eb'>Application</b> → 左侧 <b style='color:#e6e8eb'>Cookies</b> → <b style='color:#e6e8eb'>\"+esc(host)+\"</b></li>\" +\"<li style='margin:3px 0'>双击 <b style='color:#e6e8eb'>koa:sess</b> 和 <b style='color:#e6e8eb'>koa:sess.sig</b> 的 Value 复制</li>\" +\"<li style='margin:3px 0'>拼成一行：<span style='\"+mono+\";color:#9ecbff'>koa:sess=&lt;值&gt;; koa:sess.sig=&lt;值&gt;</span></li>\" +\"</ol>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='font-weight:600;margin:0 0 8px'>填进 MoviePilot 插件</div>\" +\"<div style='color:#c3c8cd'>① <b style='color:#e6e8eb'>一次性凭证</b> → 粘贴下方 JSON（设备指纹与域名自动识别）</div>\" +\"<div style='color:#c3c8cd;margin-top:2px'>② <b style='color:#e6e8eb'>完整 Cookie</b> → 粘贴上面那行 Cookie</div>\" +\"<div style='color:#c3c8cd;margin-top:2px'>保存 → 点「立即运行一次」</div>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='\"+mono+\";color:#8b9299;word-break:break-all;max-height:72px;overflow:auto;background:#101214;border:1px solid #24282c;border-radius:6px;padding:9px 11px;user-select:all'>\"+esc(bundle)+\"</div>\" +\"<div style='display:flex;gap:8px;align-items:center;margin-top:12px'>\" +\"<button id='__glados_copy' style='font:600 13.5px/1 -apple-system,\\\\'PingFang SC\\\\',sans-serif;padding:9px 16px;border-radius:6px;border:1px solid #3a6ea5;background:#2f6fb3;color:#fff;cursor:pointer'>复制凭证 JSON</button>\" +\"<button id='__glados_close' style='font:600 13.5px/1 -apple-system,\\\\'PingFang SC\\\\',sans-serif;padding:9px 16px;border-radius:6px;border:1px solid #33383d;background:#1d2023;color:#c3c8cd;cursor:pointer'>关闭</button>\" +\"<span id='__glados_ok' style='font-size:12.5px;color:#6fb3f2'></span>\" +\"</div>\" +\"</div>\"; document.body.appendChild(w); const ok=w.querySelector(\"#__glados_ok\"); w.querySelector(\"#__glados_copy\").onclick=()=>{ok.textContent=copyText(bundle)?\"已复制\":\"复制失败，请手动选中上方文本\";}; w.querySelector(\"#__glados_close\").onclick=()=>w.remove(); console.log(\"凭证 JSON:\",bundle); return bundle})()"
+        "(async()=>{ function H(a,b=0){let n=3735928559^b,r=1103547991^b;for(let i=0,t;i<a.length;i++){t=a.charCodeAt(i);n=Math.imul(n^t,2654435761);r=Math.imul(r^t,1597334677)}n=Math.imul(n^n>>>16,2246822507)^Math.imul(r^r>>>13,3266489909);r=Math.imul(r^r>>>16,2246822507)^Math.imul(n^n>>>13,3266489909);return 4294967296*(2097151&r)+(n>>>0)+\"\"} function cyrb53(a,b=0){return H(a.slice(0,a.length/2|0),b)+\"\"+H(a.slice(a.length/2|0),b)} function cf(){try{const c=document.createElement(\"canvas\"),x=c.getContext(\"2d\"),t=\"abz190#$%^@\\u00a3\\u00e9\\u00faGLaDOS!6.5[-%-&*]@345876 <canvas>\";x.textBaseline=\"top\";x.font=\"32px 'Arial'\";x.textBaseline=\"alphabetic\";x.fillStyle=\"#f1680e\";x.fillRect(125,1,62,20);x.fillStyle=\"#0c6d9e\";x.fillText(t,2,15);x.fillStyle=\"rgba(102, 204, 0, 0.7)\";x.fillText(t,4,17);x.fillStyle=\"rgba(12, 24, 10, 0.2)\";x.fillText(t,10,107);x.rotate(.03);x.fillText(t,4,17);x.fillStyle=\"rgb(155,255,5)\";x.shadowBlur=8;x.shadowColor=\"red\";x.fillRect(20,12,100,5);return c.toDataURL()}catch(e){return screen.height+\"x\"+screen.width}} function af(){return new Promise((ok,no)=>{try{const O=window.OfflineAudioContext||window.webkitOfflineAudioContext,ctx=new O(1,44100,44100),t=ctx.currentTime,osc=ctx.createOscillator(),comp=ctx.createDynamicsCompressor();osc.type=\"triangle\";osc.frequency.setValueAtTime(1e4,t);const set=(k,v)=>{try{if(comp[k]&&typeof comp[k].setValueAtTime===\"function\")comp[k].setValueAtTime(v,t)}catch(e){}};set(\"threshold\",-50);set(\"knee\",40);set(\"ratio\",12);set(\"reduction\",-20);set(\"attack\",0);set(\"release\",.25);osc.connect(comp);comp.connect(ctx.destination);osc.start(0);ctx.startRendering();ctx.oncomplete=ev=>{let s=0;for(let i=4500;i<5e3;i++)s+=Math.abs(ev.renderedBuffer.getChannelData(0)[i]);ok(s.toString())}}catch(e){no(e)}})} let ab=\"\";try{ab=btoa(await af())}catch(e){} const device=cyrb53(ab+cf())+\"-\"+window.screen.height+\"-\"+window.screen.width; const cookie=document.cookie||\"\"; const host=location.host; const bundle=JSON.stringify({v:1,cookie:cookie,device:device,domain:host,screen:window.screen.width+\"x\"+window.screen.height,ua:navigator.userAgent,at:new Date().toISOString()}); const copyText=(text)=>{let done=false;try{const ta=document.createElement(\"textarea\");ta.value=text;ta.setAttribute(\"readonly\",\"\");ta.style.cssText=\"position:fixed;top:0;left:-9999px;opacity:0\";document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,text.length);done=document.execCommand(\"copy\");document.body.removeChild(ta)}catch(e){}if(!done){try{navigator.clipboard.writeText(text);done=true}catch(e){}}return done}; const copied=copyText(bundle); const esc=(s)=>String(s).replace(/&/g,\"&amp;\").replace(/</g,\"&lt;\"); const old=document.getElementById(\"__glados_fp__\");if(old)old.remove(); const w=document.createElement(\"div\");w.id=\"__glados_fp__\"; w.style.cssText=\"position:fixed;z-index:2147483647;left:16px;right:16px;bottom:16px;max-width:760px;margin:0 auto;box-sizing:border-box;background:#151719;color:#e6e8eb;border:1px solid #2b2f33;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.45);font:14px/1.6 -apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;max-height:78vh;overflow:auto\"; const sec=\"padding:14px 18px;border-top:1px solid #24282c\"; const lbl=\"font-size:12px;letter-spacing:.4px;color:#8b9299;margin:0 0 4px\"; const mono=\"font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace\"; w.innerHTML= \"<div style='display:flex;align-items:center;gap:10px;padding:14px 18px'>\" +\"<span style='width:7px;height:7px;border-radius:50%;background:\"+(copied?\"#4ea1ff\":\"#d9a441\")+\";flex:none'></span>\" +\"<span style='font-weight:600;font-size:15px'>\"+(copied?\"凭证已生成，已尝试复制\":\"凭证已生成，请点下方按钮复制\")+\"</span>\" +\"<span style='margin-left:auto;color:#8b9299;font-size:12.5px'>\"+esc(host)+\"</span>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='\"+lbl+\"'>设备指纹</div>\" +\"<div style='\"+mono+\";color:#9ecbff;word-break:break-all'>\"+esc(device)+\"</div>\" +\"<div style='\"+lbl+\";margin-top:10px'>自动读到的 Cookie</div>\" +\"<div style='\"+mono+\";color:\"+(cookie?\"#e6e8eb\":\"#d9a441\")+\"'>\"+(cookie?esc(cookie):\"（空 —— 站点使用 HttpOnly Cookie，脚本无法读取）\")+\"</div>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='font-weight:600;margin:0 0 8px'>获取完整 Cookie：cURL 导入或手动复制四项</div>\" +\"<ol style='margin:0;padding-left:20px;color:#c3c8cd'>\" +\"<li style='margin:3px 0'>F12 → <b style='color:#e6e8eb'>Application</b> → 左侧 <b style='color:#e6e8eb'>Cookies</b> → <b style='color:#e6e8eb'>\"+esc(host)+\"</b></li>\" +\"<li style='margin:3px 0'>双击 <b style='color:#e6e8eb'>koa:sess</b>、<b style='color:#e6e8eb'>koa:sess.sig</b>、<b style='color:#e6e8eb'>gld:sess</b> 和 <b style='color:#e6e8eb'>gld:sess.sig</b> 的 Value 分别全选复制</li>\" +\"<li style='margin:3px 0'>拼成一行：<span style='\"+mono+\";color:#9ecbff'>koa:sess=&lt;值&gt;; koa:sess.sig=&lt;值&gt;; gld:sess=&lt;值&gt;; gld:sess.sig=&lt;值&gt;</span></li>\" +\"</ol>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='font-weight:600;margin:0 0 8px'>填进 MoviePilot 插件</div>\" +\"<div style='color:#c3c8cd'>① <b style='color:#e6e8eb'>一次性凭证</b> → 粘贴下方 JSON（设备指纹与域名自动识别）</div>\" +\"<div style='color:#c3c8cd;margin-top:2px'>② <b style='color:#e6e8eb'>完整 Cookie</b> → 粘贴上面四项 Cookie，或在插件 Cookie cURL 栏导入请求（手动 Cookie 栏留空）</div>\" +\"<div style='color:#c3c8cd;margin-top:2px'>保存 → 点「立即运行一次」</div>\" +\"</div>\" +\"<div style='\"+sec+\"'>\" +\"<div style='\"+mono+\";color:#8b9299;word-break:break-all;max-height:72px;overflow:auto;background:#101214;border:1px solid #24282c;border-radius:6px;padding:9px 11px;user-select:all'>\"+esc(bundle)+\"</div>\" +\"<div style='display:flex;gap:8px;align-items:center;margin-top:12px'>\" +\"<button id='__glados_copy' style='font:600 13.5px/1 -apple-system,\\\\'PingFang SC\\\\',sans-serif;padding:9px 16px;border-radius:6px;border:1px solid #3a6ea5;background:#2f6fb3;color:#fff;cursor:pointer'>复制凭证 JSON</button>\" +\"<button id='__glados_close' style='font:600 13.5px/1 -apple-system,\\\\'PingFang SC\\\\',sans-serif;padding:9px 16px;border-radius:6px;border:1px solid #33383d;background:#1d2023;color:#c3c8cd;cursor:pointer'>关闭</button>\" +\"<span id='__glados_ok' style='font-size:12.5px;color:#6fb3f2'></span>\" +\"</div>\" +\"</div>\"; document.body.appendChild(w); const ok=w.querySelector(\"#__glados_ok\"); w.querySelector(\"#__glados_copy\").onclick=()=>{ok.textContent=copyText(bundle)?\"已复制\":\"复制失败，请手动选中上方文本\";}; w.querySelector(\"#__glados_close\").onclick=()=>w.remove(); console.log(\"凭证 JSON:\",bundle); return bundle})()"
     )
 
     def _device_helper_button(self) -> Dict[str, Any]:
@@ -112,10 +113,13 @@ class gladossigner(_PluginBase):
             logger.info(f"加载配置: Base URL={self._base_url}")
             
             self._auth_bundle = config.get("auth_bundle") or ""
+            self._cookie_curl = str(config.get("cookie_curl") or "").strip()
             self._cookie = (config.get("cookie") or "").strip()
             self._device_id = (config.get("device_id") or "").strip()
             # 一次性凭证优先：自动从中解析 Cookie 与设备指纹
-            bundle = self._parse_auth_bundle(self._auth_bundle)
+            bundle = self._resolve_credentials(self._auth_bundle, self._cookie_curl, self._cookie)
+            if self._cookie_curl and not self._parse_curl_bundle(self._cookie_curl):
+                logger.warning("Cookie cURL 解析失败：请选择 Copy as cURL (bash)，并确认请求含 Cookie。")
             if bundle:
                 if bundle.get("cookie"):
                     self._cookie = bundle["cookie"]
@@ -134,8 +138,10 @@ class gladossigner(_PluginBase):
                     f"已解析一次性凭证: 域名={self._base_url}, Cookie项={cookie_items}, "
                     f"设备指纹={'有' if self._device_id else '无'}, 来源屏幕={bundle.get('screen') or '未知'}"
                 )
+                if not self._device_id:
+                    logger.warning("凭证已导入，但缺少 Authorization 设备指纹；请执行设备指纹提取代码，将输出的完整 JSON 粘贴到「① 一次性凭证」栏。")
                 if not self._cookie:
-                    logger.warning("凭证里没有 Cookie（站点 Cookie 为 HttpOnly，脚本读不到），请在「② 完整 Cookie」栏手动填写：F12 → Application → Cookies → 登录域名 → koa:sess 与 koa:sess.sig")
+                    logger.warning("凭证里没有 Cookie（站点 Cookie 为 HttpOnly，脚本读不到），请粘贴 Cookie cURL，或手动填写完整 Cookie：koa:sess、koa:sess.sig、gld:sess、gld:sess.sig")
             else:
                 self._bundle_meta = {}
                 if self._auth_bundle.strip():
@@ -171,6 +177,7 @@ class gladossigner(_PluginBase):
                 "cookie": self._cookie,
                 "device_id": self._device_id,
                 "auth_bundle": self._auth_bundle,
+                "cookie_curl": self._cookie_curl,
                 "auto_exchange": self._auto_exchange,
                 "cron": self._cron,
                 "onlyonce": False,
@@ -375,60 +382,36 @@ class gladossigner(_PluginBase):
             return {}
         cookie = headers.get("cookie") or cookie
         device = headers.get("authorization", "")
-        if not valid_url or not cookie or not device:
+        if not valid_url or not cookie:
             return {}
         return {"cookie": cookie, "device": device, "domain": parsed.netloc,
                 "ua": headers.get("user-agent", "")}
 
     @staticmethod
     def _parse_auth_bundle(raw: Any) -> Dict[str, str]:
-        """
-        解析「一次性凭证」，兼容四种粘贴形式：
-          1. 提取脚本产出的 JSON：{"v":1,"cookie":"...","device":"...","screen":"..."}
-          2. 从浏览器复制的请求头片段：Cookie: xxx 与 Authorization: yyy
-          3. 只有 Cookie 的裸串（此时设备指纹留空，由调用方回退到手动栏）
-          4. 浏览器 Copy as cURL (bash) 请求命令
-        解析失败返回空字典。
-        """
-        text = str(raw or "").strip()
-        if not text:
+        """一次性凭证仅接受提取代码生成的 JSON。"""
+        try:
+            data = json.loads(str(raw or "").strip())
+        except (ValueError, TypeError):
             return {}
-        if text.lower().startswith("curl"):
-            return gladossigner._parse_curl_bundle(text)
-        # 形 1：JSON 凭证包
-        if text.startswith("{"):
-            try:
-                data = json.loads(text)
-                if isinstance(data, dict):
-                    cookie = str(data.get("cookie") or "").strip()
-                    device = str(data.get("device") or data.get("authorization") or "").strip()
-                    if cookie or device:
-                        return {
-                            "cookie": cookie,
-                            "device": device,
-                            "domain": str(data.get("domain") or "").strip(),
-                            "screen": str(data.get("screen") or "").strip(),
-                            "ua": str(data.get("ua") or "").strip(),
-                            "at": str(data.get("at") or "").strip(),
-                        }
-            except Exception as error:
-                logger.warning(f"一次性凭证 JSON 解析失败: {error}")
-        # 形 2：请求头片段
-        cookie = ""
-        device = ""
-        for line in text.replace("\r", "\n").split("\n"):
-            line = line.strip()
-            lowered = line.lower()
-            if lowered.startswith("cookie:"):
-                cookie = line.split(":", 1)[1].strip()
-            elif lowered.startswith("authorization:"):
-                device = line.split(":", 1)[1].strip()
-        if cookie or device:
-            return {"cookie": cookie, "device": device}
-        # 形 3：裸 Cookie（必须含有 = 且不含换行，避免把指纹误当 Cookie）
-        if "=" in text and "\n" not in text and len(text) < 8000:
-            return {"cookie": text, "device": ""}
-        return {}
+        if not isinstance(data, dict):
+            return {}
+        device = str(data.get("device") or data.get("authorization") or "").strip()
+        cookie = str(data.get("cookie") or "").strip()
+        if not device and not cookie:
+            return {}
+        return {"cookie": cookie, "device": device,
+                **{k: str(data.get(k) or "").strip() for k in ("domain", "screen", "ua", "at")}}
+
+    @staticmethod
+    def _resolve_credentials(raw: Any, curl: str, manual_cookie: str) -> Dict[str, str]:
+        """JSON 提供设备信息；Cookie 优先使用手填，其次 cURL，最后 JSON。"""
+        bundle = gladossigner._parse_auth_bundle(raw)
+        imported = gladossigner._parse_curl_bundle(curl)
+        cookie = manual_cookie or imported.get("cookie") or bundle.get("cookie") or ""
+        if cookie:
+            bundle["cookie"] = cookie
+        return bundle
 
     def _build_headers(self) -> Dict[str, str]:
         """
@@ -812,7 +795,7 @@ class gladossigner(_PluginBase):
                             {'component': 'VCardText', 'content': [
                                 {'component': 'VRow', 'content': [
                                     {'component': 'VCol', 'props': {'cols': 12}, 'content': [
-                                        {'component': 'VAlert', 'props': {'type': 'warning', 'variant': 'outlined', 'class': 'mb-2', 'text': '推荐 cURL 导入：在已登录的 GlaDOS 页面按 F12 → Network（网络），刷新后选择同域 /api/ 请求，右键 → Copy → Copy as cURL (bash)，将完整命令粘贴到下面的一次性凭证栏并保存。自动读取 Cookie、Authorization 设备指纹、域名和 User-Agent，无需分别填写。请选择包含 Cookie 和 Authorization 的请求。'}}
+                                        {'component': 'VAlert', 'props': {'type': 'warning', 'variant': 'outlined', 'class': 'mb-2', 'text': '先将设备指纹提取代码生成的 JSON 粘贴到①；Cookie 可通过②粘贴 cURL 导入，或在③手动填写完整四项 Cookie。cURL 仅用于读取 Cookie，无需包含 Authorization。两种 Cookie 方式同时填写时，手动填写优先；所有凭证请从同一浏览器、同一登录域名获取。'}}
                                     ]},
                                 ]},
                                 {'component': 'VRow', 'content': [
@@ -836,17 +819,18 @@ class gladossigner(_PluginBase):
                                     ]},
                                 ]},
                                 {'component': 'VRow', 'content': [
-                                    {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VTextarea', 'props': {'model': 'auth_bundle', 'label': '① 一次性凭证 / cURL 请求（推荐）', 'rows': 3, 'placeholder': '粘贴 Copy as cURL (bash) 的完整命令，或提取代码输出的 JSON，例如 {"v":1,"cookie":"","device":"83xxxx-1080-1920","domain":"glados.space"}'}}]},
+                                    {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VTextarea', 'props': {'model': 'auth_bundle', 'label': '① 一次性凭证 JSON（设备指纹 + 登录域名）', 'rows': 3, 'placeholder': '粘贴提取代码输出的整段 JSON，例如 {"v":1,"cookie":"","device":"83xxxx-1080-1920","domain":"glados.space"}'}}]},
                                 ]},
                                 {'component': 'VRow', 'content': [
-                                    {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VTextarea', 'props': {'model': 'cookie', 'label': '② 完整 Cookie（cURL 已包含时可留空）', 'rows': 3, 'placeholder': 'koa:sess=xxx; koa:sess.sig=yyy'}}]},
+                                    {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VTextarea', 'props': {'model': 'cookie_curl', 'label': '② Cookie cURL 导入（可选）', 'rows': 4, 'placeholder': '在 GlaDOS 页面 F12 → Network → 刷新 → 右键 /api/ 请求 → Copy as cURL (bash)，粘贴完整命令'}}]},
+                                    {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VTextarea', 'props': {'model': 'cookie', 'label': '③ 完整 Cookie（手动填写；使用 cURL 时留空）', 'rows': 3, 'placeholder': 'koa:sess=xxx; koa:sess.sig=yyy; gld:sess=xxx; gld:sess.sig=yyy'}}]},
                                     {'component': 'VCol', 'props': {'cols': 12}, 'content': [
-                                        {'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': 'Cookie 在哪：F12 → Application（应用程序）→ 左侧 Storage 下的 Cookies → 点你登录的域名 → 找到 koa:sess 与 koa:sess.sig，双击 Value 全选复制，拼成一行 koa:sess=<值>; koa:sess.sig=<值>。浏览器禁止脚本读取 HttpOnly Cookie，若已导入包含 Cookie 的 cURL 请求，这一栏可留空。'}}
+                                        {'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': '手动 Cookie 请填写完整四项：koa:sess、koa:sess.sig、gld:sess、gld:sess.sig，用分号分隔。也可在 Network 中复制 Cookie 请求头的完整值。使用 cURL 导入时请清空手动 Cookie 栏，避免旧值覆盖导入结果。'}}
                                     ]},
                                 ]},
                                 {'component': 'VRow', 'content': [
                                     {'component': 'VCol', 'props': {'cols': 12}, 'content': [
-                                        {'component': 'VAlert', 'props': {'type': 'warning', 'variant': 'outlined', 'class': 'mt-2', 'text': '凭证有时效：Cookie 失效（控制台掉登录）后需重新提取。若通知提示 Cookie 项为 0，说明站点 Cookie 是 HttpOnly，请在浏览器开发者工具 Network 中复制 Cookie 请求头，填到下方「高级：手动填写」。换设备/换浏览器/改屏幕分辨率后设备指纹会变化，同样需要重新提取。提取代码仅在本机计算，不联网、不上传数据。'}}
+                                        {'component': 'VAlert', 'props': {'type': 'warning', 'variant': 'outlined', 'class': 'mt-2', 'text': '凭证有时效：Cookie 失效（控制台掉登录）后需重新提取。若通知提示 Cookie 项为 0，说明站点 Cookie 是 HttpOnly，请在浏览器开发者工具 Network 中复制 Cookie 请求头，填到「③ 完整 Cookie」或重新导入 Cookie cURL。换设备/换浏览器/改屏幕分辨率后设备指纹会变化，同样需要重新提取。提取代码仅在本机计算，不联网、不上传数据。'}}
                                     ]},
                                     {'component': 'VCol', 'props': {'cols': 12}, 'content': [
                                         {'component': 'VExpansionPanels', 'props': {'variant': 'accordion', 'class': 'mt-2'}, 'content': [
@@ -924,6 +908,7 @@ class gladossigner(_PluginBase):
             "onlyonce": False,
             "base_url": "https://glados.cloud",
             "auth_bundle": "",
+            "cookie_curl": "",
             "cookie": "",
             "device_id": "",
             "auto_exchange": "",
