@@ -47,11 +47,12 @@
     "name": "GlaDOS 签到助手",
     "description": "每日签到获取点数，支持可选自动兑换 10~100 天套餐时长",
     "labels": "签到,GlaDOS,VPN",
-    "version": "3.6.0",
+    "version": "3.6.1",
     "icon": "https://raw.githubusercontent.com/madrays/MoviePilot-Plugins/main/icons/glados.png",
     "author": "tmzg0000",
     "level": 2,
     "history": {
+      "v3.6.1": "一次性凭证使用 JSON；Cookie 支持独立 cURL 导入或手填四项，完善 HTTP 手动复制指引，维护作者改为 tmzg0000。",
       "v3.6.0": "修复跨设备签到：请求头改用凭证记录的登录设备 UA（此前硬编码 macOS 导致 Windows 等设备必报 code=4 device-mismatch），并同步 sec-ch-ua-platform",
       "v3.0.1": "适配 glados.space 控制台的设备不一致提示；新增可选积分自动兑换套餐",
       "v3.0.0": "迁移为 MoviePilot V3 独立插件版本，保留 V2 分支兼容。",
