@@ -25,3 +25,11 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
   - V2：[`plugins.v2/telegramautosignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v2/telegramautosignin)
   - V3：[`plugins.v3/telegramautosignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/telegramautosignin)
+
+### [GlaDOS 签到助手](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/gladossigner)
+
+  从 [madrays/MoviePilot-Plugins](https://github.com/madrays/MoviePilot-Plugins) 搬运，保留原作者署名，作为后续二开的基础。支持每日签到、定时任务、代理、失败重试及可选积分兑换套餐。
+
+  - V2（3.6.0）：[`plugins.v2/gladossigner`](plugins.v2/gladossigner)
+  - V3（3.6.0）：[`plugins.v3/gladossigner`](plugins.v3/gladossigner)
+  - 来源提交、许可证与署名声明见各插件目录中的 README、LICENSE 和 NOTICE。
