@@ -33,3 +33,10 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
   - V2（3.6.1）：[`plugins.v2/gladossigner`](plugins.v2/gladossigner)
   - V3（3.6.1）：[`plugins.v3/gladossigner`](plugins.v3/gladossigner)
   - 来源提交、许可证与署名声明见各插件目录中的 README、LICENSE 和 NOTICE。
+
+### [自动限速](plugins.v2/limit)
+
+  从 [aClarkChen/MoviePilot-Plugins](https://github.com/aClarkChen/MoviePilot-Plugins/tree/main/plugins.v2/limit) 导入并二开，本仓库维护作者为 `tmzg0000`，保留原作者来源说明。支持 qBittorrent、Transmission 的按标签及所有种子上传限速，以及 Cron、固定间隔和运行一次；所有种子模式可筛选仅新增种子，按下载器持久化记录，逐个设置上传上限，不修改下载器全局限速。
+
+  - V2（1.1.7）：[`plugins.v2/limit`](plugins.v2/limit)，配置与日志单位统一为 `KiB/s`。
+  - 来源提交与许可证说明见插件目录中的 README 和 NOTICE。
