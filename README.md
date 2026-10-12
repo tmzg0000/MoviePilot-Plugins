@@ -39,4 +39,5 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
   从 [aClarkChen/MoviePilot-Plugins](https://github.com/aClarkChen/MoviePilot-Plugins/tree/main/plugins.v2/limit) 导入并二开，本仓库维护作者为 `tmzg0000`，保留原作者来源说明。支持 qBittorrent、Transmission 的按标签及所有种子上传限速，以及 Cron、固定间隔和运行一次；所有种子模式可筛选仅新增种子，按下载器持久化记录，逐个设置上传上限，不修改下载器全局限速。
 
   - V2（1.1.7）：[`plugins.v2/limit`](plugins.v2/limit)，配置与日志单位统一为 `KiB/s`。
+  - V3（1.1.7）：[`plugins.v3/limit`](plugins.v3/limit)，支持相同的限速与新增筛选功能。
   - 来源提交与许可证说明见插件目录中的 README 和 NOTICE。

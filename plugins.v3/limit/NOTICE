@@ -1,0 +1,17 @@
+自动限速 / Limit
+Original author: ClarkChen (aClarkChen)
+Original repository: https://github.com/aClarkChen/MoviePilot-Plugins
+Original path: plugins.v2/limit
+Imported commit: 77194d7f350f2628925c21df237d25abdc49a7f6
+Original version: 1.1.5
+
+Modified by tmzg0000 on 2026-10-12, version 1.1.6:
+Standardize speed configuration and logs to KiB/s, fix qBittorrent torrent
+upload limit conversion, and convert Transmission limits to integer kB/s.
+Modified by tmzg0000 on 2026-10-12, version 1.1.7:
+Add per-torrent upload limits for all torrents without changing global limits.
+Add a persistent per-downloader new-torrent filter and retry failed limits.
+Current maintainer and plugin author field: tmzg0000.
+The upstream GPL v3 license is reproduced in the repository root LICENSE.
+
+MoviePilot V3 adaptation by tmzg0000, version 1.1.7, on 2026-10-12.

@@ -13,24 +13,34 @@ from unittest.mock import Mock, call, patch
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_plugin():
+def load_plugin(version="v2", legacy=False):
     modules = {}
-    for name in (
+    names = [
         "pytz", "apscheduler", "apscheduler.schedulers",
         "apscheduler.schedulers.background", "apscheduler.triggers",
-        "apscheduler.triggers.cron", "app", "app.core", "app.core.config",
-        "app.helper", "app.helper.downloader", "app.log", "app.plugins", "app.schemas",
-    ):
+        "apscheduler.triggers.cron", "app", "app.schemas",
+    ]
+    if version == "v2" or legacy:
+        names += ["app.core", "app.core.config", "app.helper", "app.helper.downloader",
+                  "app.log", "app.plugins"]
+        config_path, helper_path = "app.core.config", "app.helper.downloader"
+        logger_path, plugin_path, schema_path = "app.log", "app.plugins", "app.schemas"
+    else:
+        names += ["app.sdk", "app.sdk.config", "app.sdk.services", "app.sdk.logging",
+                  "app.sdk.plugin", "app.schemas.system"]
+        config_path, helper_path = "app.sdk.config", "app.sdk.services"
+        logger_path, plugin_path, schema_path = "app.sdk.logging", "app.sdk.plugin", "app.schemas.system"
+    for name in names:
         modules[name] = types.ModuleType(name)
     modules["apscheduler.schedulers.background"].BackgroundScheduler = Mock()
     modules["apscheduler.triggers.cron"].CronTrigger = Mock()
-    modules["app.core.config"].settings = types.SimpleNamespace(TZ="UTC")
-    modules["app.helper.downloader"].DownloaderHelper = Mock()
-    modules["app.log"].logger = Mock()
-    modules["app.plugins"]._PluginBase = object
-    modules["app.schemas"].ServiceInfo = object
+    modules[config_path].settings = types.SimpleNamespace(TZ="UTC")
+    modules[helper_path].DownloaderHelper = Mock()
+    modules[logger_path].logger = Mock()
+    modules[plugin_path]._PluginBase = object
+    modules[schema_path].ServiceInfo = object
     spec = importlib.util.spec_from_file_location(
-        "limit_under_test", ROOT / "plugins.v2/limit/__init__.py"
+        "limit_under_test", ROOT / f"plugins.{version}/limit/__init__.py"
     )
     module = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, modules):
@@ -39,8 +49,10 @@ def load_plugin():
 
 
 class SpeedLimitTests(unittest.TestCase):
+    VERSION = "v2"
+
     def setUp(self):
-        self.module = load_plugin()
+        self.module = load_plugin(self.VERSION)
         self.plugin = self.module.Limit()
         self.plugin._event.clear()
         self.data = {}
@@ -386,10 +398,49 @@ class SpeedLimitTests(unittest.TestCase):
         self.assertFalse(defaults["new_only"])
 
     def test_manifest_version_matches_plugin(self):
-        entry = json.loads((ROOT / "package.v2.json").read_text())["Limit"]
+        entry = json.loads((ROOT / f"package.{self.VERSION}.json").read_text())["Limit"]
         self.assertEqual(entry["version"], self.plugin.plugin_version)
         self.assertEqual(entry["author"], self.plugin.plugin_author)
         self.assertEqual(self.plugin.plugin_author, "tmzg0000")
+
+
+class V3SpeedLimitTests(SpeedLimitTests):
+    VERSION = "v3"
+
+    def test_v3_can_fall_back_to_early_v3_import_paths(self):
+        module = load_plugin("v3", legacy=True)
+        self.assertEqual(module.Limit.plugin_version, "1.1.7")
+        self.assertEqual(module.Limit.plugin_author, "tmzg0000")
+
+    def test_v3_ignores_unsupported_downloader_types(self):
+        service = self.service("rtorrent")
+        self.configure_all_torrents(service, [{"hash": "test"}])
+        self.plugin._complete_limit()
+        service.instance.get_torrents.assert_not_called()
+        service.instance.change_torrent.assert_not_called()
+        service.instance.set_speed_limit.assert_not_called()
+
+    def test_v3_form_only_lists_supported_downloaders(self):
+        self.plugin.downloader_helper = Mock()
+        self.plugin.downloader_helper.get_configs.return_value = {
+            "qb": types.SimpleNamespace(name="qb", type="qbittorrent"),
+            "tr": types.SimpleNamespace(name="tr", type="transmission"),
+            "rt": types.SimpleNamespace(name="rt", type="rtorrent"),
+        }
+        form, defaults = self.plugin.get_form()
+        def props_for(nodes, model):
+            for node in nodes:
+                if node.get("props", {}).get("model") == model:
+                    return node["props"]
+                match = props_for(node.get("content", []), model)
+                if match:
+                    return match
+            return None
+        self.assertEqual(props_for(form, "downloaders")["items"], [
+            {"title": "qb", "value": "qb"}, {"title": "tr", "value": "tr"},
+        ])
+        entry = json.loads((ROOT / "package.v3.json").read_text())["Limit"]
+        self.assertEqual(entry["system_version"], ">=3.0.0")
 
 
 if __name__ == "__main__":
