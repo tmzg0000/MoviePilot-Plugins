@@ -1,6 +1,13 @@
 # MoviePilot-Plugins
 MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
+### [抢车位助手](plugins.v3/qcwautopark)
+
+  支持 MoviePilot V2/V3，直接调用抢车位游戏 HTTP 接口，无需浏览器常驻。每轮读取 MP 躺平 PT 主站的最新 Cookie，经主站登录入口取得游戏会话。默认每5分钟检查：自己私家车位上他人的车预估收益 **≥1000** 时贴条，自己的车基础收益 **>2000** 时收车，再自动停车。停车目标必须同时满足 **等级≤3、金币≤3000**，阈值均可配置。所有请求完成后至少间隔10秒，防止接口响应慢时连续操作；结果页保留最近20轮记录。
+
+  - V2：[`plugins.v2/qcwautopark`](plugins.v2/qcwautopark)
+  - V3：[`plugins.v3/qcwautopark`](plugins.v3/qcwautopark)
+
 ### [媒体库封面生成](https://github.com/justzerock/MoviePilot-Plugins/tree/main/plugins.v2/mediacovergenerator)
   > 参考项目：https://github.com/HappyQuQu/jellyfin-library-poster
 

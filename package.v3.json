@@ -80,5 +80,19 @@
       "v1.1.6": "统一配置与日志单位为 KiB/s，修复 qB 标签上传限速漏乘 1024，转换 Transmission 接口单位。"
     },
     "system_version": ">=3.0.0"
+  },
+  "QcwAutoPark": {
+    "name": "抢车位助手",
+    "description": "复用MP主站认证，每5分钟贴条、收车和自动停车，全部请求至少间隔10秒。",
+    "labels": "游戏,定时任务,停车",
+    "version": "1.1.0",
+    "icon": "signin.png",
+    "author": "tmzg0000",
+    "level": 2,
+    "system_version": ">=3.0.0",
+    "history": {
+      "v1.1.0": "新增自己车位预估收益≥1000自动贴条；复用MP主站Cookie经parking.php登录游戏；全部HTTP请求默认至少间隔10秒。",
+      "v1.0.0": "首次发布：HTTP接口定时收车与自动停车，默认5分钟、收益>2000，停车要求等级≤3且金币≤3000，均可配置。"
+    }
   }
 }
