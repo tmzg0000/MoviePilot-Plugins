@@ -216,6 +216,67 @@ class PluginTests(unittest.TestCase):
         self.plugin.site_apikey = lambda: ''
         self.plugin.init_plugin({'enabled': True, 'username': 'user', 'password': 'pass'})
 
+    def form_data(self, **extra):
+        return {"username": "new-user", "password": "new-pass", "email": "new@example.org",
+                "api_key": "key", "enabled": True, "notify": False, **extra}
+
+    def test_buttons_use_live_form_and_authenticated_post_api(self):
+        form, defaults = self.plugin.get_form()
+        serialized = json.dumps(form, ensure_ascii=False)
+        self.assertIn('获取验证码', serialized)
+        self.assertIn('登录', serialized)
+        self.assertNotIn('保存后立即执行一次', serialized)
+        self.assertNotIn('"model": "request_email"', serialized)
+        self.assertIn('window.MoviePilotAPI.post', serialized)
+        self.assertNotIn('localStorage', serialized)
+        self.assertFalse(defaults['auth_busy'])
+        routes = {r['path']: r for r in self.plugin.get_api()}
+        for path in ('/send_code', '/login', '/refresh_session'):
+            self.assertEqual(routes[path]['auth'], 'bear')
+            self.assertEqual(routes[path]['methods'], ['POST'])
+
+    def test_send_button_saves_unsaved_form_without_scheduling_otp(self):
+        with patch.object(M, 'fetch_profile', return_value=(None, 'offline')), patch.object(M, 'keepalive_login', return_value={'ok': False, 'email_sent': True, 'message': 'sent'}) as login, patch.object(M, 'BackgroundScheduler') as scheduler:
+            result = self.plugin.api_send_code(self.form_data())
+        self.assertTrue(result['success'])
+        self.assertEqual(login.call_args.args[:2], ('new-user', 'new-pass'))
+        self.assertTrue(login.call_args.kwargs['request_email'])
+        self.assertEqual(login.call_args.kwargs['email'], 'new@example.org')
+        self.assertEqual(self.plugin.update_config.call_args.args[0]['username'], 'new-user')
+        scheduler.assert_not_called()
+
+    def test_login_button_does_not_resend_and_persists_session(self):
+        with patch.object(M, 'fetch_profile', return_value=(None, 'offline')), patch.object(M, 'keepalive_login', return_value={'ok': True, 'message': 'logged in', 'state': {'local': {'auth': 'token'}}}) as login:
+            result = self.plugin.api_login(self.form_data(email_code='123456'))
+        # Login is successful even when the optional activity API is offline.
+        self.assertTrue(result['success'])
+        self.assertTrue(result['authenticated'])
+        self.assertIn('已登录并保存会话', result['message'])
+        self.assertFalse(login.call_args.kwargs['request_email'])
+        self.assertEqual(login.call_args.kwargs['email_code'], '123456')
+        self.assertIn('browser_state', self.data)
+        self.assertNotIn('123456', json.dumps(self.data))
+        self.assertEqual(self.plugin.update_config.call_args.args[0]['email_code'], '')
+
+    def test_invalid_form_and_concurrent_action_do_not_change_credentials(self):
+        for values in ({'email': 'invalid'}, {'username': ''}, {'password': ''}, {'email_code': 'bad'}):
+            with patch.object(M, 'keepalive_login') as login:
+                self.assertFalse(self.plugin.api_login(self.form_data(**values))['success'])
+                login.assert_not_called()
+        self.assertEqual(self.plugin._username, 'user')
+        self.plugin._run_lock.acquire()
+        try:
+            self.assertFalse(self.plugin.api_send_code(self.form_data())['success'])
+            self.assertEqual(self.plugin._username, 'user')
+        finally:
+            self.plugin._run_lock.release()
+
+    def test_refresh_button_never_uses_a_code_or_resends(self):
+        with patch.object(M, 'fetch_profile', return_value=(None, 'offline')), patch.object(M, 'keepalive_login', return_value={'ok': False, 'message': 'expired'}) as login:
+            self.assertFalse(self.plugin.api_refresh_session(self.form_data(email_code='123456'))['success'])
+        self.assertEqual(login.call_args.kwargs['email_code'], '')
+        self.assertFalse(login.call_args.kwargs['request_email'])
+
     def test_one_time_job_has_delay_and_misfire_grace(self):
         scheduler = Mock()
         with patch.object(M, 'BackgroundScheduler', return_value=scheduler):

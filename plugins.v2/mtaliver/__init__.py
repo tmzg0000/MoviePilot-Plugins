@@ -1,6 +1,7 @@
 """M-Team 邮箱验证与每日会话访问。基于 qingyukb 馒头保活二开，GPL-3.0。"""
 from __future__ import annotations
 
+import re
 from threading import Lock
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -40,7 +41,9 @@ from app.schemas.types import NotificationType
 
 from .mteam import (DEFAULT_API_BASE, DEFAULT_SITE, activity_minutes_ago, fetch_profile,
                     format_activity, keepalive_login, last_activity, parse_datetime,
-                    parse_profile)
+                    parse_profile, session_identity)
+
+from .ui import action_button
 
 HISTORY_LIMIT = 30
 PAGE_STYLE = (
@@ -72,7 +75,7 @@ class MtAliver(_PluginBase):
     plugin_name = "馒头保活助手"
     plugin_desc = "手动邮箱验证后保存浏览器会话，每日访问 M-Team，失效时提醒重新验证。"
     plugin_icon = "signin.png"
-    plugin_version = "1.4.2"
+    plugin_version = "1.5.0"
     plugin_author = "tmzg0000（原作者 qingyukb）"
     author_url = "https://blog.qyus.cn"
     plugin_config_prefix = "mtaliver_"
@@ -219,7 +222,76 @@ class MtAliver(_PluginBase):
             "methods": ["GET"],
             "summary": "立即执行馒头保活助手",
             "description": "使用浏览器访问 M-Team，并返回账号统计",
-        }]
+        }] + [{"path": "/" + action, "endpoint": endpoint, "methods": ["POST"],
+               "auth": "bear", "summary": label}
+              for action, endpoint, label in (
+                  ("send_code", self.api_send_code, "获取邮箱验证码"),
+                  ("login", self.api_login, "邮箱验证码登录"),
+                  ("refresh_session", self.api_refresh_session, "刷新登录会话"))]
+
+    def api_send_code(self, data: dict) -> Dict[str, Any]:
+        return self._config_action("send_code", data)
+
+    def api_login(self, data: dict) -> Dict[str, Any]:
+        return self._config_action("login", data)
+
+    def api_refresh_session(self, data: dict) -> Dict[str, Any]:
+        return self._config_action("refresh_session", data)
+
+    def _config_action(self, action: str, data: dict) -> Dict[str, Any]:
+        """Run a button action with current form values; never queue an OTP."""
+        if not isinstance(data, dict):
+            return {"success": False, "message": "表单数据无效"}
+        if not self._run_lock.acquire(blocking=False):
+            return {"success": False, "message": "已有任务正在执行，请完成后重试"}
+        try:
+            username = str(data.get("username", self._username) or "").strip()
+            password = str(data.get("password", self._password) or "")
+            email = str(data.get("email", self._email) or "").strip()
+            code = str(data.get("email_code") or "").strip()
+            if not username or not password:
+                return {"success": False, "message": "请填写账号和密码"}
+            if action != "refresh_session" and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+                return {"success": False, "message": "请填写有效的绑定邮箱"}
+            if action == "login" and not re.fullmatch(r"[0-9]{6}", code):
+                return {"success": False, "message": "请填写邮件中的 6 位验证码"}
+            try:
+                numbers = {"ratio_warn": max(0.0, float(data.get("ratio_warn", self._ratio_warn))),
+                           "verify_minutes": max(1, int(data.get("verify_minutes", self._verify_minutes))),
+                           "interval_days": max(1, int(data.get("interval_days", self._interval_days)))}
+            except (TypeError, ValueError):
+                return {"success": False, "message": "请检查间隔、校验窗口和分享率数值"}
+            self._username, self._password, self._email = username, password, email
+            for key in ("enabled", "notify", "api_verify"):
+                if key in data:
+                    setattr(self, "_" + key, bool(data[key]))
+            for key in ("site_url", "api_base", "api_key", "cron"):
+                if key in data:
+                    value = str(data[key] or "").strip()
+                    if value or key == "api_key":
+                        setattr(self, "_" + key, value.rstrip('/') if key in ("site_url", "api_base") else value)
+            for key, value in numbers.items():
+                setattr(self, "_" + key, value)
+            self._email_code = code if action == "login" else ""
+            self._request_email = action == "send_code"
+            self._save_config()
+            # Button clicks also save scheduling options without requiring the
+            # dialog's Save button or reinitializing/clearing the pending OTP.
+            try:
+                from app.scheduler import Scheduler
+                Scheduler().update_plugin_job(self.__class__.__name__)
+            except ImportError:
+                pass
+            record = self._execute_keepalive()
+            authenticated = bool(record.get("authenticated"))
+            success = bool(record.get("pending") or authenticated) if action != "refresh_session" else bool(record.get("ok"))
+            message = str(record.get("message") or "")
+            if action == "login" and authenticated and not record.get("ok"):
+                message = "已登录并保存会话；活动校验提示：" + message
+            return {"success": success, "message": message, "authenticated": authenticated}
+        finally:
+            self._email_code, self._request_email = "", False
+            self._run_lock.release()
 
     def api_keepalive(self) -> Dict[str, Any]:
         record = self.keepalive()
@@ -237,6 +309,8 @@ class MtAliver(_PluginBase):
                  "trigger": trigger, "func": self.scheduled_keepalive, "kwargs": {}}]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        saved_state = self.get_data("browser_state") or {}
+        has_session = saved_state.get("identity") == session_identity(self._username, self._password, self._site_url)
         def field(kind: str, model: str, label: str, md: int = 6, **props: Any) -> Dict[str, Any]:
             return {"component": "VCol", "props": {"cols": 12, "md": md},
                     "content": [{"component": kind,
@@ -252,21 +326,27 @@ class MtAliver(_PluginBase):
 
         return [{"component": "VForm", "content": [
             # 总开关
-            row(field("VSwitch", "enabled", "启用插件", 4),
-                hint("VSwitch", "notify", "发送通知", "每次结果都会推送，含分享率与魔力", 4),
-                hint("VSwitch", "run_once", "保存后立即执行一次",
-                     "保存后马上登录一次，提交验证码登录，或使用已保存会话访问", 4)),
+            row(field("VSwitch", "enabled", "启用定时刷新", 6),
+                hint("VSwitch", "notify", "发送通知", "执行结果通过 MoviePilot 通知发送", 6)),
             # 账号与二次验证
             row(hint("VTextField", "username", "M-Team 账号", "站点登录账号", 4),
                 hint("VTextField", "password", "密码", "站点登录密码", 4,
                      type="password"),
                 hint("VTextField", "email", "绑定邮箱",
                      "填写 M-Team 账号绑定的邮箱，用于发送验证码", 4)),
-            row(hint("VSwitch", "request_email", "发送邮箱验证码",
-                     "勾选并保存后发送一次；收到邮件后填写验证码，不要再次勾选", 6),
+            row(hint("VTextField", "api_key", "API Key（可选）",
+                     "留空则读取 MoviePilot 站点管理的 API Key；用于核对活动时间", 6,
+                     type="password"),
                 hint("VTextField", "email_code", "邮箱验证码（一次性）",
-                     "填写邮件中的 6 位数字并保存即可登录，提交后自动清空", 6,
+                     "先获取验证码，收到邮件后填入，再点击登录；提交后自动清空", 6,
                      type="password", autocomplete="off")),
+            row(action_button("send_code", "获取验证码", "primary"),
+                action_button("login", "登录", "success"),
+                action_button("refresh_session", "立即刷新", "secondary")),
+            row({"component": "VCol", "props": {"cols": 12}, "content": [{
+                "component": "VAlert", "props": {"variant": "tonal",
+                    "type": "{{ auth_success ? 'success' : 'info' }}",
+                    "text": "{{ auth_status }}"}}]}),
             # 站点地址
             row(hint("VTextField", "site_url", "站点地址",
                      "默认 https://kp.m-team.cc，也可填 m-team.io 镜像", 6,
@@ -284,9 +364,6 @@ class MtAliver(_PluginBase):
                 hint("VTextField", "ratio_warn", "分享率提醒阈值",
                      "低于该值时通知里带提醒，默认 1.0", 4,
                      type="number", min=0, step=0.1)),
-            row(hint("VTextField", "api_key", "API Key（可选）",
-                     "留空则读取 MoviePilot 站点管理的 API Key；用于核对最近动向和账号统计", 12,
-                     type="password")),
             # 校验
             row(hint("VSwitch", "api_verify", "用「最近动向」校验登录",
                      "有 API Key 时要求最近动向变新；关掉则仅确认网页会话有效", 4),
@@ -297,7 +374,7 @@ class MtAliver(_PluginBase):
             row({"component": "VCol", "props": {"cols": 12}, "content": [{
                 "component": "VAlert", "props": {"type": "warning", "variant": "tonal",
                                                  "density": "compact"},
-                "text": "首次发送邮箱验证码 → 填码并保存 → 每日复用浏览器会话访问。会话失效需重新验证。"
+                "text": "填写账号信息 → 获取验证码 → 填码 → 登录。按钮自动保存当前设置，无需勾选立即执行。后续定时复用会话刷新；失效需重新验证。"
                         "需 MoviePilot 本地 Playwright；会话访问是否满足站点保号规则，请核对最近动向与站点规则。"}]}),
         ]}], {
             "enabled": self._enabled, "notify": self._notify, "run_once": False,
@@ -307,6 +384,8 @@ class MtAliver(_PluginBase):
             "api_key": self._api_key, "api_base": self._api_base,
             "ratio_warn": self._ratio_warn, "verify_minutes": self._verify_minutes,
             "api_verify": self._api_verify, "interval_days": self._interval_days,
+            "auth_busy": False, "auth_success": False,
+            "auth_status": "已保存登录会话，可点击立即刷新；失效时重新获取验证码登录。" if has_session else "填写账号、密码、绑定邮箱和可选 API Key，然后点击获取验证码。",
         }
 
     # ------------------------------------------------------------------ 保活
@@ -329,6 +408,12 @@ class MtAliver(_PluginBase):
         if not self._run_lock.acquire(blocking=False):
             return {"ok": False, "message": "已有保活任务正在执行"}
         try:
+            return self._execute_keepalive()
+        finally:
+            self._run_lock.release()
+
+    def _execute_keepalive(self) -> Dict[str, Any]:
+        try:
             self._save_execution("running", "正在提交邮箱验证码，请稍后重新打开结果页" if self._email_code else "浏览器任务执行中，请稍后重新打开结果页")
             record = self._keepalive()
             self._save_execution("finished", record.get("message") or "执行完成")
@@ -344,8 +429,6 @@ class MtAliver(_PluginBase):
             logger.error("馒头保活助手：任务执行异常")
             self._notify_result(record, {})
             return record
-        finally:
-            self._run_lock.release()
 
     def _keepalive(self) -> Dict[str, Any]:
         """执行邮箱验证或会话访问，读取统计并记录结果。"""
@@ -411,6 +494,7 @@ class MtAliver(_PluginBase):
             message += "；账号统计读取失败，未能确认最近动向"
         record = {"time": now, "ok": ok, "message": message,
                   "pending": bool(outcome.get("email_sent")),
+                  "authenticated": bool(outcome.get("ok")),
                   "ratio": (profile or {}).get("ratio", ""),
                   "bonus": (profile or {}).get("bonus", "")}
         history = list(self.get_data("history") or [])

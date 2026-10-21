@@ -337,7 +337,7 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
     if email_code and not re.fullmatch(r'[0-9]{6}', email_code):
         return {"ok": False, "message": "邮箱验证码必须为 6 位数字"}
     if not state and not request_email and not email_code:
-        return {"ok": False, "message": "尚未登录，请勾选「发送邮箱验证码」并保存，再填写邮件中的验证码"}
+        return {"ok": False, "message": "尚未登录，请先点击「获取验证码」，再填码并点击「登录」"}
     try:
         from app.helper.browser import PlaywrightHelper
     except ImportError:
@@ -443,7 +443,7 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
         if not page.evaluate(SEND_EMAIL_JS):
             return result(False, '发送验证码按钮状态已改变，请稍后重试')
         if wait_for(lambda: sent, 20):
-            return result(False, '验证码已发送，请填入邮件中的 6 位验证码，勾选「立即执行一次」并保存')
+            return result(False, '验证码已发送，请填入邮件中的 6 位验证码，然后点击「登录」')
         return result(False, '站点未确认邮件发送成功，请检查绑定邮箱、冷却时间或安全验证')
 
     try:
