@@ -30,7 +30,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "图片验证码优先 MP OCR，失败后 Browserless 兜底；农场仅直连签到。"
     plugin_icon = "signin.png"
-    plugin_version = "2.0.0"
+    plugin_version = "2.0.1"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -175,6 +175,14 @@ class CaptchaSignIn(_PluginBase):
             row(field("VTextarea", "browserless_tokens", "Browserless Token（每行一个）", rows=3,
                       autocomplete="off", spellcheck=False, hint="明文显示，每行一个；在下方每个站点中单独选择 Token 编号。可留空；农场和本地浏览器模式不使用 Token。",
                       **{"persistent-hint": True})),
+            {"component": "div", "props": {"class": "text-caption mb-4", "style": {"overflowWrap": "anywhere"}}, "content": [
+                {"component": "a", "props": {"href": "https://www.browserless.io/signup/email?plan=free", "target": "_blank", "rel": "noopener noreferrer", "class": "font-weight-medium"},
+                 "text": "注册 Browserless 账号【https://www.browserless.io/signup/email?plan=free】"},
+                {"component": "span", "text": "，登录 "},
+                {"component": "a", "props": {"href": "https://browserless.io/account/", "target": "_blank", "rel": "noopener noreferrer", "class": "font-weight-medium"},
+                 "text": "账户控制台【https://browserless.io/account/】"},
+                {"component": "span", "text": "，在 API Key 区域复制 Token 后填入。"},
+            ]},
             row(field("VSelect", "site_ids", "签到站点", items=options, multiple=True, chips=True,
                       hint="选择后自动显示下方对应站点的设置；仅显示已保存 Cookie 的站点。", **{"persistent-hint": True})),
             {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact",
@@ -194,7 +202,7 @@ class CaptchaSignIn(_PluginBase):
             {"title": "本地浏览器", "value": "local_browser"},
         ]
         choice_items = [{"title": "默认", "value": "default"}, {"title": "自定义", "value": "custom"}]
-        token_items = "{{ [{title: '不使用 Browserless', value: 0}, ...(browserless_tokens || '').split(/\\r?\\n/).map(t => t.trim()).filter(Boolean).map((t, i) => ({title: 'Token ' + (i + 1), value: i + 1}))] }}"
+        token_items = "{{ [{title: '不使用', value: 0}, ...(browserless_tokens || '').split(/\\r?\\n/).map(t => t.trim()).filter(Boolean).map((t, i) => ({title: 'Token ' + (i + 1), value: i + 1}))] }}"
         site_cards = []
         for site in sites:
             prefix = "site_%s_" % site.id
@@ -209,37 +217,33 @@ class CaptchaSignIn(_PluginBase):
             if farm:
                 defaults[prefix + "mode"] = "farm"
                 defaults[prefix + "token"] = 0
-            fields = [row(field("VSelect", prefix + "mode", "模式", items=mode_items, disabled=farm),
-                          field("VSelect", prefix + "token", "使用 Token", items=token_items,
-                                disabled="{{ ['farm', 'local_browser'].includes(%smode) }}" % prefix))]
-            if rule.get("http_handler") == "hdsky":
-                fields.append({"component": "VAlert", "props": {"type": "info", "variant": "tonal",
-                               "text": "天空先通过 HTTP 接口获取验证码并调用 MP OCR；未确认成功时才使用所选 Browserless Token。"}})
-            if rule["mode"] == "local_browser":
-                fields.append({"component": "VAlert", "props": {"type": "info", "variant": "tonal",
-                               "text": "使用 MP 本地浏览器及该站代理配置；默认不切换云端出口。安全验证未通过或浏览器不可用时直接显示失败。"}})
-            if farm:
-                fields.append({"component": "VAlert", "props": {"type": "info", "variant": "tonal",
-                               "text": "农场仅直连签到，不调用 OCR 或 Browserless；按钮文字不适用。"}})
-            else:
-                fields.extend([
-                    row(field("VSelect", prefix + "button_source", "按钮文字", items=choice_items)),
-                    {"component": "VRow", "props": {"show": "{{ %sbutton_source === 'custom' }}" % prefix},
-                     "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
-                         field("VTextField", prefix + "button_text", "自定义按钮文字", placeholder="例如：立即签到")]}]},
-                ])
-            fields.extend([
-                row(field("VSelect", prefix + "success_source", "成功文字确认", items=choice_items)),
-                {"component": "VRow", "props": {"show": "{{ %ssuccess_source === 'custom' }}" % prefix},
-                 "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
-                     field("VTextarea", prefix + "success_text", "自定义成功确认文字", rows=2,
-                           hint="每行一个，匹配任意一项即确认成功；请填写明确的签到结果文字。", **{"persistent-hint": True})]}]},
-            ])
-            site_cards.append({"component": "VCard", "props": {"variant": "outlined", "class": "mb-3",
+            compact = {"density": "compact", "variant": "outlined", "hide-details": True}
+            main_row = {"component": "VRow", "props": {"dense": True, "align": "center"}, "content": [
+                {"component": "VCol", "props": {"cols": 12, "md": 2}, "content": [
+                    {"component": "div", "props": {"class": "text-body-2 font-weight-medium text-truncate", "title": str(site.name)}, "text": str(site.name)}]},
+                {"component": "VCol", "props": {"cols": 6, "md": 3}, "content": [
+                    field("VSelect", prefix + "mode", "模式", items=mode_items, disabled=farm, **compact)]},
+                {"component": "VCol", "props": {"cols": 6, "md": 2}, "content": [
+                    field("VSelect", prefix + "token", "Token", items=token_items,
+                          disabled="{{ ['farm', 'local_browser'].includes(%smode) }}" % prefix, **compact)]},
+                {"component": "VCol", "props": {"cols": 6, "md": 2}, "content": [
+                    field("VSelect", prefix + "button_source", "按钮文字", items=choice_items, disabled=farm, **compact)]},
+                {"component": "VCol", "props": {"cols": 6, "md": 3}, "content": [
+                    field("VSelect", prefix + "success_source", "成功文字确认", items=choice_items, **compact)]},
+            ]}
+            details = []
+            if not farm:
+                details.append({"component": "VRow", "props": {"dense": True, "show": "{{ %sbutton_source === 'custom' }}" % prefix},
+                    "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
+                        field("VTextField", prefix + "button_text", "自定义按钮文字", placeholder="例如：立即签到", **compact)]}]})
+            details.append({"component": "VRow", "props": {"dense": True, "show": "{{ %ssuccess_source === 'custom' }}" % prefix},
+                "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
+                    field("VTextarea", prefix + "success_text", "自定义成功确认文字", rows=2, density="compact",
+                          hint="每行一个，匹配任意一项即确认成功。", **{"persistent-hint": True})]}]})
+            site_cards.append({"component": "div", "props": {"class": "py-2",
                             "style": "{{ ({order: (site_ids || []).map(String).indexOf('%s')}) }}" % site.id,
                             "show": "{{ (site_ids || []).map(String).includes('%s') }}" % site.id},
-                            "content": [{"component": "VCardTitle", "text": str(site.name)},
-                                        {"component": "VCardText", "content": fields}]})
+                            "content": [main_row, *details]})
         content.append({"component": "div", "props": {"style": {"display": "flex", "flexDirection": "column"}}, "content": site_cards})
         content.append({"component": "VExpansionPanels", "content": [
             {"component": "VExpansionPanel", "content": [

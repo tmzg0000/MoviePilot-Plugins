@@ -196,7 +196,7 @@ class PluginTests(unittest.TestCase):
             plugin = module.CaptchaSignIn()
             plugin.init_plugin({'direct_site_ids':[9]})
             self.assertEqual(plugin._site_ids,[9])
-            self.assertEqual(plugin.plugin_version,'2.0.0')
+            self.assertEqual(plugin.plugin_version,'2.0.1')
 
 
 if __name__ == '__main__':
