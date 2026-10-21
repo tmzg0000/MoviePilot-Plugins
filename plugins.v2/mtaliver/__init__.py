@@ -1,4 +1,4 @@
-"""M-Team 邮箱验证与每日会话访问。基于 qingyukb 馒头保活二开，GPL-3.0。"""
+"""M-Team 邮箱验证与每日会话访问。"""
 from __future__ import annotations
 
 import re
@@ -32,12 +32,15 @@ except ImportError:
     scheduler_sdk = None
 
 try:
-    from app.sdk.events import Event, EventType, eventmanager
+    from app.sdk.events import Event, eventmanager
 except ImportError:
     from app.core.event import Event, eventmanager
-    from app.schemas.types import EventType
+from app.schemas.types import EventType
 
-from app.schemas.types import NotificationType
+try:  # V3 uses MessageType; V2 retains NotificationType.
+    from app.schemas.types import MessageType as NotificationType
+except ImportError:
+    from app.schemas.types import NotificationType
 
 from .mteam import (DEFAULT_API_BASE, DEFAULT_SITE, activity_minutes_ago, fetch_profile,
                     format_activity, keepalive_login, last_activity, parse_datetime,
@@ -76,8 +79,8 @@ class MtAliver(_PluginBase):
     plugin_desc = "手动邮箱验证后保存浏览器会话，每日访问 M-Team，失效时提醒重新验证。"
     plugin_icon = "signin.png"
     plugin_version = "1.5.1"
-    plugin_author = "tmzg0000（原作者 qingyukb）"
-    author_url = "https://blog.qyus.cn"
+    plugin_author = "tmzg0000"
+    author_url = "https://github.com/tmzg0000/MoviePilot-Plugins"
     plugin_config_prefix = "mtaliver_"
     plugin_order = 30
     auth_level = 2
@@ -151,8 +154,10 @@ class MtAliver(_PluginBase):
             add_once = getattr(scheduler_sdk, "add_plugin_once_job", None) if scheduler_sdk else None
             if callable(add_once):
                 try:
-                    add_once(self.__class__.__name__, "mtaliver_once", self.keepalive,
-                             "馒头保活助手（立即执行）", delay_seconds=3)
+                    accepted = add_once(self.__class__.__name__, "mtaliver_once", self.keepalive,
+                                        "馒头保活助手（立即执行）", delay_seconds=3)
+                    if accepted is False:
+                        self._save_execution("failed", "宿主调度器尚未运行，请稍后重试")
                 except Exception:
                     self._save_execution("failed", "一次性任务登记失败，请重新保存后重试")
                     logger.error("馒头保活助手：登记一次性任务失败")
@@ -185,12 +190,15 @@ class MtAliver(_PluginBase):
     def site_apikey() -> str:
         """从 MoviePilot 站点管理里找 M-Team 的 API Key（站点里填过就不用再单独配）。"""
         try:
-            from app.db.site_oper import SiteOper
-        except Exception:
+            from app.sdk._legacy.site import SiteOper  # V3 compatibility facade
+        except ImportError:
             try:
-                from app.db.oper.site import SiteOper  # 兼容旧路径
-            except Exception:
-                return ""
+                from app.db.site_oper import SiteOper
+            except ImportError:
+                try:
+                    from app.db.oper.site import SiteOper
+                except ImportError:
+                    return ""
         try:
             sites = SiteOper().list_order_by_pri()
         except Exception:
@@ -293,11 +301,15 @@ class MtAliver(_PluginBase):
             self._save_config()
             # Button clicks also save scheduling options without requiring the
             # dialog's Save button or reinitializing/clearing the pending OTP.
-            try:
-                from app.scheduler import Scheduler
-                Scheduler().update_plugin_job(self.__class__.__name__)
-            except ImportError:
-                pass
+            update_job = getattr(scheduler_sdk, "update_plugin_job", None) if scheduler_sdk else None
+            if callable(update_job):
+                update_job(self.__class__.__name__)
+            else:
+                try:
+                    from app.scheduler import Scheduler
+                    Scheduler().update_plugin_job(self.__class__.__name__)
+                except ImportError:
+                    pass
             record = self._execute_keepalive()
             authenticated = bool(record.get("authenticated"))
             success = bool(record.get("pending") or authenticated) if action != "refresh_session" else bool(record.get("ok"))
@@ -635,6 +647,12 @@ class MtAliver(_PluginBase):
                 {"component": "div", "props": {"class": "mteam-page"}, "content": body}]
 
     def stop_service(self):
+        remove_once = getattr(scheduler_sdk, "remove_plugin_once_job", None) if scheduler_sdk else None
+        if callable(remove_once):
+            try:
+                remove_once(self.__class__.__name__, "mtaliver_once")
+            except Exception:
+                logger.warning("馒头保活助手：取消宿主一次性任务失败")
         scheduler = getattr(self, "_scheduler", None)
         if scheduler is not None:
             try:

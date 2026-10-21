@@ -53,7 +53,12 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
 ### [馒头保活助手（mtaliver）](plugins.v2/mtaliver)
 
-  基于 qingyukb 的 mteamalive 1.3.6 二开，支持 MoviePilot V2。首次手动填写邮箱验证码后保存浏览器会话，默认每天 01:35、09:35、21:35 检查并按间隔访问 M-Team，无需 TOTP 密钥；会话失效需重新验证。可用 API Key 核对最近动向，实际保号效果须部署后核对站点记录与规则。详见插件目录 README。
+  首次手动填写邮箱验证码后保存浏览器会话，默认每天 01:35、09:35、21:35 检查并按间隔访问 M-Team；会话失效需重新验证。可用 API Key 核对最近动向，实际保号效果须部署后核对站点记录与规则。详见插件目录 README。
+
+  支持 MoviePilot V2/V3，版本均为 **1.5.1**。密码仅临时认证使用，不保存、不回填。
+
+  - V2：[`plugins.v2/mtaliver`](plugins.v2/mtaliver)
+  - V3：[`plugins.v3/mtaliver`](plugins.v3/mtaliver)
 
 ## 呀哈哈封面工坊 / Yahaha Cover Studio
 

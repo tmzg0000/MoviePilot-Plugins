@@ -1,0 +1,12 @@
+M-Team 保活（邮箱验证二开版）
+Original author: qingyukb
+Original source: https://github.com/qingyukb/MoviePilot-Plugins/tree/main/plugins.v2/mteamalive
+Upstream main observed at import: c9a298fd898ea4803b7455a633372bc1d2f631af
+Original plugin version: 1.3.6
+Imported: 2026-10-21
+License: GNU GPL version 3 (see LICENSE)
+
+Modified by tmzg0000: manual email verification, persistent browser session,
+manual email sending, daily browsing and authenticated-response validation.
+Public login UI inspected: https://static.m-team.cc/static/js/main.e715ce06.js
+Retains the original profile parsing, optional API verification and history UI.

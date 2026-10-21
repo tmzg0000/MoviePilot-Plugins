@@ -340,10 +340,14 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
         return {"ok": False, "message": "邮箱验证码必须为 6 位数字"}
     if not state and not request_email and not email_code:
         return {"ok": False, "message": "尚未登录，请先点击「获取验证码」，再填码并点击「登录」"}
-    try:
-        from app.helper.browser import PlaywrightHelper
+    try:  # V3 launches managed CloakBrowser contexts through the stable SDK.
+        from app.sdk.browser import launch_browser_context
     except ImportError:
-        return {"ok": False, "message": "MoviePilot 缺少本地 Playwright 浏览器依赖"}
+        launch_browser_context = None
+        try:
+            from app.helper.browser import PlaywrightHelper
+        except ImportError:
+            return {"ok": False, "message": "MoviePilot 缺少本地浏览器依赖"}
 
     def callback(page: Any) -> dict:
         profile = {}
@@ -449,8 +453,17 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
         return result(False, '站点未确认邮件发送成功，请检查绑定邮箱、冷却时间或安全验证')
 
     try:
-        outcome = PlaywrightHelper().action(url='about:blank', callback=callback,
-                                            headless=True, timeout=timeout)
+        if launch_browser_context is not None:
+            context = launch_browser_context(headless=True)
+            try:
+                page = context.new_page()
+                page.set_default_timeout(timeout * 1000)
+                outcome = callback(page)
+            finally:
+                context.close()
+        else:
+            outcome = PlaywrightHelper().action(url='about:blank', callback=callback,
+                                                headless=True, timeout=timeout)
         return outcome or {"ok": False, "message": "浏览器没有返回结果"}
     except Exception:
         # Browser exceptions may include evaluated input arguments or cookies.
