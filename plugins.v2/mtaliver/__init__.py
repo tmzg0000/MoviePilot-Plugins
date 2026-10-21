@@ -71,7 +71,7 @@ class MtAliver(_PluginBase):
     plugin_name = "馒头保活助手"
     plugin_desc = "手动邮箱验证后保存浏览器会话，每日访问 M-Team，失效时提醒重新验证。"
     plugin_icon = "signin.png"
-    plugin_version = "1.4.0"
+    plugin_version = "1.4.1"
     plugin_author = "tmzg0000（原作者 qingyukb）"
     author_url = "https://blog.qyus.cn"
     plugin_config_prefix = "mtaliver_"

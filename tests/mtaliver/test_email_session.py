@@ -47,6 +47,21 @@ class Page:
         self.context.cookies.return_value = [{'name': 'session', 'value': 'hidden'}]
         self.calls = []
         self.listener = None
+        self.email_filled = False
+        self.ready_checks = 0
+
+    def locator(self, selector):
+        page = self
+        class EmailInput:
+            @property
+            def first(self):
+                return self
+            def fill(self, value, **kwargs):
+                page.email_filled = True
+                page.calls.append(('native_email_fill', value))
+            def press(self, key):
+                page.calls.append(('native_email_press', key))
+        return EmailInput()
 
     def on(self, event, callback):
         self.listener = callback
@@ -75,8 +90,21 @@ class Page:
         self.calls.append((script, arg))
         if script == C.STORAGE_JS:
             return {'local': {'auth': 'hidden'}, 'session': {'__mp_mteam_restored': '1'}}
+        if script == C.SEND_EMAIL_STATUS_JS:
+            self.ready_checks += 1
+            if self.scenario == 'missing_button':
+                return 'missing'
+            if self.scenario == 'disabled_button':
+                return 'disabled'
+            if self.scenario == 'delayed_send' and self.ready_checks < 4:
+                return 'disabled'
+            return 'ready' if self.email_filled else 'disabled'
         if script == C.SEND_EMAIL_JS:
-            if self.scenario == 'send':
+            if not self.email_filled:
+                raise AssertionError('must fill email before sending')
+            if self.scenario == 'delayed_send' and self.ready_checks < 4:
+                raise AssertionError('must wait for asynchronous validation')
+            if self.scenario in ('send', 'delayed_send'):
                 self.emit('member/sendLoginEmailVerifyCode', {'code': '0'})
             return True
         if script == C.OTP_JS_FILL:
@@ -106,6 +134,20 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         result, _, _ = self.run_browser('send_rejected', request_email=True)
         self.assertFalse(result['email_sent'])
+
+    def test_waits_for_async_email_validation_and_clicks_once(self):
+        result, page, _ = self.run_browser('delayed_send', request_email=True)
+        self.assertTrue(result['email_sent'])
+        self.assertEqual(page.ready_checks, 4)
+        self.assertEqual(sum(c[0] == C.SEND_EMAIL_JS for c in page.calls), 1)
+        self.assertIn(('native_email_press', 'Tab'), page.calls)
+
+    def test_distinguishes_disabled_and_missing_buttons_without_sending(self):
+        for scenario, message in [('disabled_button', '暂不可用'), ('missing_button', '未找到')]:
+            result, page, _ = self.run_browser(scenario, request_email=True)
+            self.assertIn(message, result['message'])
+            self.assertFalse(result['email_sent'])
+            self.assertNotIn(C.SEND_EMAIL_JS, [c[0] for c in page.calls])
 
     def test_code_does_not_resend_and_saves_state(self):
         result, page, _ = self.run_browser('code', email_code='123456')

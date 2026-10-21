@@ -289,29 +289,34 @@ EMAIL_TAB_JS = r"""
   return true;
 }
 """
-EMAIL_FILL_JS = r"""
-(email) => {
-  const node = [...document.querySelectorAll('input')].find(n =>
-    n.getClientRects().length && (n.id === 'email' || n.type === 'email' ||
-    /郵箱|邮箱|郵件|邮件|電郵|email/i.test(n.placeholder || '')));
-  if (!node) return false;
-  const setter = Object.getOwnPropertyDescriptor(node.constructor.prototype, 'value').set;
-  setter.call(node, email);
-  node.dispatchEvent(new Event('input', {bubbles:true}));
-  node.dispatchEvent(new Event('change', {bubbles:true}));
-  return true;
-}
-"""
-SEND_EMAIL_JS = r"""
+EMAIL_INPUT_SELECTOR = (
+    'input#email:visible, input[type=email]:visible, '
+    'input[placeholder*="郵箱"]:visible, input[placeholder*="邮箱"]:visible, '
+    'input[placeholder*="郵件"]:visible, input[placeholder*="邮件"]:visible, '
+    'input[placeholder*="email" i]:visible'
+)
+# The email form validates asynchronously (useWatch + validateFields). A disabled
+# send button is present during that validation, so wait before clicking once.
+EMAIL_BUTTON_QUERY_JS = r"""
 () => {
-  const button = [...document.querySelectorAll('button')].find(n =>
-    n.getClientRects().length && !n.disabled &&
-    /發送|发送|寄送|獲取|获取|send|get code/i.test(n.textContent || ''));
-  if (!button) return false;
-  button.click();
-  return true;
+  const email = document.querySelector('input#email') ||
+    [...document.querySelectorAll('input')].find(n => n.getClientRects().length &&
+      (n.type === 'email' || /郵箱|邮箱|郵件|邮件|email/i.test(n.placeholder || '')));
+  const scope = (email && email.form) || document;
+  return [...scope.querySelectorAll('button, [role=button]')].find(n =>
+    n.getClientRects().length && n.type !== 'submit' &&
+    /發送|发送|寄送|寄出|獲取|获取|取得|send|get.*code|verification.*code|^\s*\d+\s*s\s*$/i
+      .test(n.textContent || '')) || null;
 }
 """
+SEND_EMAIL_STATUS_JS = '() => { const n = (' + EMAIL_BUTTON_QUERY_JS + ')(); ' + (
+    "return !n ? 'missing' : n.disabled || n.getAttribute('aria-disabled') === 'true' "
+    "? 'disabled' : 'ready'; }"
+)
+SEND_EMAIL_JS = '() => { const n = (' + EMAIL_BUTTON_QUERY_JS + ')(); ' + (
+    "if (!n || n.disabled || n.getAttribute('aria-disabled') === 'true') return false; "
+    "n.click(); return true; }"
+)
 STORAGE_JS = "() => ({local: {...localStorage}, session: {...sessionStorage}})"
 RESTORE_STORAGE_JS = r"""
 (state) => {
@@ -429,8 +434,13 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
         if login_error:
             return result(False, '账号登录被拒绝，请检查账号密码或站点安全验证')
         page.wait_for_timeout(1000)
-        if not page.evaluate(EMAIL_FILL_JS, email):
-            return result(False, '未找到绑定邮箱输入框，站点页面可能已更新')
+        try:
+            # Native fill drives React/Ant Design state and validation reliably.
+            email_input = page.locator(EMAIL_INPUT_SELECTOR).first
+            email_input.fill(email, timeout=5000)
+            email_input.press('Tab')
+        except Exception:
+            return result(False, '未找到或无法填写绑定邮箱输入框，站点页面可能已更新')
         if email_code:
             if not page.evaluate(OTP_JS_FILL, email_code):
                 return result(False, '未找到邮箱验证码提交表单')
@@ -439,8 +449,13 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
                 page.wait_for_timeout(3000)
                 return result(True, '邮箱验证成功，已保存会话并访问首页', save=True)
             return result(False, '邮箱验证码登录未成功，请检查验证码是否正确、过期或触发安全验证')
+        if not wait_for(lambda: page.evaluate(SEND_EMAIL_STATUS_JS) == 'ready', 15):
+            status = page.evaluate(SEND_EMAIL_STATUS_JS)
+            if status == 'disabled':
+                return result(False, '发送验证码按钮暂不可用：邮箱校验未通过或仍在发送冷却期，请确认绑定邮箱后重试')
+            return result(False, '未找到发送验证码按钮，站点页面结构或按钮文字可能已更新')
         if not page.evaluate(SEND_EMAIL_JS):
-            return result(False, '未找到发送验证码按钮，请检查绑定邮箱或发送冷却时间')
+            return result(False, '发送验证码按钮状态已改变，请稍后重试')
         if wait_for(lambda: sent, 20):
             return result(False, '验证码已发送，请填入邮件中的 6 位验证码，勾选「立即执行一次」并保存')
         return result(False, '站点未确认邮件发送成功，请检查绑定邮箱、冷却时间或安全验证')
