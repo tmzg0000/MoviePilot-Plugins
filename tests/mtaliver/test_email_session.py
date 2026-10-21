@@ -52,16 +52,31 @@ class Page:
 
     def locator(self, selector):
         page = self
-        class EmailInput:
+        class Input:
+            def __init__(self, selector):
+                self.selector = selector
             @property
             def first(self):
                 return self
             def fill(self, value, **kwargs):
-                page.email_filled = True
-                page.calls.append(('native_email_fill', value))
+                if self.selector == C.EMAIL_INPUT_SELECTOR:
+                    page.email_filled = True
+                    page.calls.append(('native_email_fill', value))
+                else:
+                    page.code_filled = True
+                    page.calls.append(('native_code_fill', value))
             def press(self, key):
-                page.calls.append(('native_email_press', key))
-        return EmailInput()
+                page.calls.append(('native_input_press', key))
+            def locator(self, selector):
+                page.calls.append(('locator', selector))
+                return Input(selector)
+            def click(self, **kwargs):
+                if not getattr(page, 'code_filled', False):
+                    raise AssertionError('submit before code entered')
+                page.calls.append(('native_code_submit', None))
+                if page.scenario == 'code':
+                    page.authenticated()
+        return Input(selector)
 
     def on(self, event, callback):
         self.listener = callback
@@ -107,10 +122,6 @@ class Page:
             if self.scenario in ('send', 'delayed_send'):
                 self.emit('member/sendLoginEmailVerifyCode', {'code': '0'})
             return True
-        if script == C.OTP_JS_FILL:
-            if self.scenario == 'code':
-                self.authenticated()
-            return True
         return True
 
 
@@ -140,7 +151,7 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(result['email_sent'])
         self.assertEqual(page.ready_checks, 4)
         self.assertEqual(sum(c[0] == C.SEND_EMAIL_JS for c in page.calls), 1)
-        self.assertIn(('native_email_press', 'Tab'), page.calls)
+        self.assertIn(('native_input_press', 'Tab'), page.calls)
 
     def test_distinguishes_disabled_and_missing_buttons_without_sending(self):
         for scenario, message in [('disabled_button', '暂不可用'), ('missing_button', '未找到')]:
@@ -156,6 +167,8 @@ class BrowserTests(unittest.TestCase):
         self.assertNotIn('__mp_mteam_restored', result['state']['session'])
         self.assertNotIn(C.SEND_EMAIL_JS, [c[0] for c in page.calls])
         self.assertNotIn('123456', json.dumps(result))
+        self.assertIn(('native_code_submit', None), page.calls)
+        self.assertIn(('locator', 'xpath=ancestor::form[1]'), page.calls)
 
     def test_bad_code_not_success(self):
         result, _, _ = self.run_browser('bad_code', email_code='123456')
@@ -202,6 +215,42 @@ class PluginTests(unittest.TestCase):
         self.plugin.post_message = Mock()
         self.plugin.site_apikey = lambda: ''
         self.plugin.init_plugin({'enabled': True, 'username': 'user', 'password': 'pass'})
+
+    def test_one_time_job_has_delay_and_misfire_grace(self):
+        scheduler = Mock()
+        with patch.object(M, 'BackgroundScheduler', return_value=scheduler):
+            self.plugin.init_plugin({'run_once': True, 'email_code': '123456'})
+        job = scheduler.add_job.call_args.kwargs
+        self.assertGreater(job['run_date'].timestamp(), datetime.now().timestamp())
+        self.assertIsNotNone(job['run_date'].tzinfo)
+        self.assertEqual(job['misfire_grace_time'], 120)
+        self.assertEqual(self.data['execution']['status'], 'queued')
+        self.assertNotIn('123456', json.dumps(self.data))
+        scheduler.start.assert_called_once()
+        self.plugin.stop_service()
+
+    def test_running_status_visible_before_browser_returns(self):
+        def login(*args, **kwargs):
+            self.assertEqual(self.data['execution']['status'], 'running')
+            self.assertIn('执行中', json.dumps(self.plugin.get_page(), ensure_ascii=False))
+            return {'ok': False, 'message': '验证码被拒绝'}
+        with patch.object(M, 'keepalive_login', side_effect=login):
+            result = self.plugin.keepalive()
+        self.assertFalse(result['ok'])
+        self.assertEqual(self.data['execution']['status'], 'finished')
+
+    def test_unexpected_failure_is_recorded_and_secrets_redacted(self):
+        with patch.object(M, 'keepalive_login', side_effect=RuntimeError('secret-code-123456')):
+            self.assertFalse(self.plugin.keepalive()['ok'])
+        self.assertEqual(self.data['execution']['status'], 'failed')
+        self.assertIn('last', self.data)
+        self.assertNotIn('123456', json.dumps(self.data))
+
+    def test_pending_footer_does_not_report_failure(self):
+        self.data['history'] = [{'pending': True, 'time': '2026-10-21 09:00:00'}]
+        self.data['last'] = self.data['history'][0]
+        page = json.dumps(self.plugin.get_page(), ensure_ascii=False)
+        self.assertIn('最近一次：2026-10-21 09:00:00 · 待验证', page)
 
     def test_form_no_totp_and_defaults(self):
         form, defaults = self.plugin.get_form()

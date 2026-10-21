@@ -218,32 +218,10 @@ LOGIN_JS_FILL = """
 }
 """
 
-OTP_JS_FILL = """
-(code) => {
-  const visible = (node) => Boolean(node) &&
-    (node.offsetParent !== null || node.getClientRects().length > 0);
-  const inputs = [...document.querySelectorAll('input')].filter(visible);
-  const target = inputs.find((node) => /驗證碼|验证码|verification|authenticator|otp/i
-                    .test(node.placeholder || '')) ||
-                 inputs.find((node) => node.autocomplete === 'one-time-code') ||
-                 inputs.find((node) => node.maxLength === 6 && node.type !== 'password') ||
-                 document.querySelector('input#otp-code, input[name=otp-code]');
-  if (!target) return false;
-  const setter = Object.getOwnPropertyDescriptor(
-    target.constructor.prototype, 'value').set;
-  setter.call(target, code);
-  target.dispatchEvent(new Event('input', { bubbles: true }));
-  target.dispatchEvent(new Event('change', { bubbles: true }));
-
-  const form = target.form || document;
-  const button = form.querySelector('button[type=submit]') ||
-                 [...form.querySelectorAll('button, [role=button]')].find((node) =>
-                   /登錄|登录|登入|確認|确认|下一步|next/i.test((node.textContent || '').trim()));
-  if (!button) return false;
-  button.click();
-  return true;
-}
-"""
+EMAIL_CODE_SELECTOR = (
+    'input#code:visible, input[autocomplete="one-time-code"]:visible, '
+    'input[maxlength="6"]:visible'
+)
 
 HAS_LOGIN_FORM_JS = """
 () => {
@@ -442,8 +420,16 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
         except Exception:
             return result(False, '未找到或无法填写绑定邮箱输入框，站点页面可能已更新')
         if email_code:
-            if not page.evaluate(OTP_JS_FILL, email_code):
-                return result(False, '未找到邮箱验证码提交表单')
+            try:
+                code_input = page.locator(EMAIL_CODE_SELECTOR).first
+                code_input.fill(email_code, timeout=5000)
+                code_input.press('Tab')
+                # React must receive the input event before Ant Design submits
+                # the form. Native fill/click also waits for actionability.
+                form = code_input.locator('xpath=ancestor::form[1]')
+                form.locator('button[type="submit"]').click(timeout=5000)
+            except Exception:
+                return result(False, '未找到或无法提交邮箱验证码表单，请更新插件后重试')
             if wait_for(lambda: bool(profile)):
                 page.goto(base + '/index', wait_until='domcontentloaded', timeout=30000)
                 page.wait_for_timeout(3000)

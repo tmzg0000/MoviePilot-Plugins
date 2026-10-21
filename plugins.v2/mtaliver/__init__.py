@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from threading import Lock
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -71,7 +72,7 @@ class MtAliver(_PluginBase):
     plugin_name = "馒头保活助手"
     plugin_desc = "手动邮箱验证后保存浏览器会话，每日访问 M-Team，失效时提醒重新验证。"
     plugin_icon = "signin.png"
-    plugin_version = "1.4.1"
+    plugin_version = "1.4.2"
     plugin_author = "tmzg0000（原作者 qingyukb）"
     author_url = "https://blog.qyus.cn"
     plugin_config_prefix = "mtaliver_"
@@ -128,6 +129,7 @@ class MtAliver(_PluginBase):
         if self._run_once or self._request_email or self._email_code:
             self._run_once = False
             self._save_config()
+            self._save_execution("queued", "任务已排队，等待提交邮箱验证码" if self._email_code else "任务已排队，等待浏览器执行")
             # 官方规范：一次性任务交给宿主调度器，不自建 BackgroundScheduler
             add_once = getattr(scheduler_sdk, "add_plugin_once_job", None) if scheduler_sdk else None
             if callable(add_once):
@@ -135,14 +137,20 @@ class MtAliver(_PluginBase):
                     add_once(self.__class__.__name__, "mtaliver_once", self.keepalive,
                              "馒头保活助手（立即执行）", delay_seconds=3)
                 except Exception:
-                    logger.exception("馒头保活助手：登记一次性任务失败")
+                    self._save_execution("failed", "一次性任务登记失败，请重新保存后重试")
+                    logger.error("馒头保活助手：登记一次性任务失败")
             else:
                 # 老版本没有该接口时退回本地调度器
                 scheduler = BackgroundScheduler(timezone=settings.TZ)
                 scheduler.add_job(func=self.keepalive, trigger="date",
-                                  run_date=datetime.now(), name="馒头保活助手（立即执行）")
+                                  run_date=datetime.now(ZoneInfo(str(settings.TZ))) + timedelta(seconds=3),
+                                  misfire_grace_time=120, name="馒头保活助手（立即执行）")
                 scheduler.start()
                 self._scheduler = scheduler
+
+    def _save_execution(self, status: str, message: str) -> None:
+        self.save_data("execution", {"status": status, "message": message,
+                                   "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
 
     def _save_config(self) -> None:
         self.update_config({
@@ -321,7 +329,21 @@ class MtAliver(_PluginBase):
         if not self._run_lock.acquire(blocking=False):
             return {"ok": False, "message": "已有保活任务正在执行"}
         try:
-            return self._keepalive()
+            self._save_execution("running", "正在提交邮箱验证码，请稍后重新打开结果页" if self._email_code else "浏览器任务执行中，请稍后重新打开结果页")
+            record = self._keepalive()
+            self._save_execution("finished", record.get("message") or "执行完成")
+            return record
+        except Exception:
+            # Record unexpected failures without logging credentials or browser arguments.
+            record = {"time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                      "ok": False, "message": "任务执行异常，请检查 MoviePilot 浏览器和存储服务后重试"}
+            self.save_data("last", record)
+            history = list(self.get_data("history") or [])
+            self.save_data("history", [record] + history[:HISTORY_LIMIT - 1])
+            self._save_execution("failed", record["message"])
+            logger.error("馒头保活助手：任务执行异常")
+            self._notify_result(record, {})
+            return record
         finally:
             self._run_lock.release()
 
@@ -436,8 +458,14 @@ class MtAliver(_PluginBase):
         history = list(self.get_data("history") or [])
         profile = self.get_data("profile") or {}
         last = self.get_data("last") or {}
+        execution = self.get_data("execution") or {}
+        status_panel = []
+        if execution.get("status") in ("queued", "running", "failed"):
+            status_panel = [{"component": "VAlert", "props": {
+                "type": "error" if execution.get("status") == "failed" else "info",
+                "variant": "tonal", "text": str(execution.get("time") or "") + " · " + str(execution.get("message") or "")}}]
         if not history:
-            return [{"component": "VAlert", "props": {"type": "info", "variant": "tonal",
+            return status_panel + [{"component": "VAlert", "props": {"type": "info", "variant": "tonal",
                      "text": "还没有保活记录；保存配置后点「保存后立即执行一次」，或等 Cron 触发。"}}]
 
         def stat(label: str, value: str, tone: str = "") -> Dict[str, Any]:
@@ -497,8 +525,8 @@ class MtAliver(_PluginBase):
         if last.get("time"):
             body.append({"component": "div", "props": {"class": "mteam-line"},
                          "text": f"最近一次：{last.get('time')} · "
-                                 f"{'成功' if last.get('ok') else '失败'}"})
-        return [{"component": "style", "text": PAGE_STYLE},
+                                 f"{'待验证' if last.get('pending') else '成功' if last.get('ok') else '失败'}"})
+        return status_panel + [{"component": "style", "text": PAGE_STYLE},
                 {"component": "div", "props": {"class": "mteam-page"}, "content": body}]
 
     def stop_service(self):
