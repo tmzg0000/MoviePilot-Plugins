@@ -1,10 +1,11 @@
-"""MoviePilot V2/V3 entrypoint for Browserless-backed PT check-ins."""
+"""MoviePilot V2/V3 entrypoint for HTTP/OCR-first PT check-ins."""
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import time
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from apscheduler.triggers.cron import CronTrigger
@@ -22,14 +23,14 @@ except ImportError:  # MoviePilot V2
 
 from app.schemas import NotificationType
 
-from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, SignResult, parse_rules, resolve_rule, site_state_key, target_url
+from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, HttpSigner, HybridSigner, LocalBrowserSigner, SignResult, parse_rules, resolve_rule, site_state_key, target_url
 
 
 class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
-    plugin_desc = "复用 MoviePilot 站点 Cookie，通过 Browserless 完成 PT 图片验证码与 Cloudflare 签到。"
+    plugin_desc = "图片验证码优先 MP OCR，失败后 Browserless 兜底；农场仅直连签到。"
     plugin_icon = "signin.png"
-    plugin_version = "1.1.2"
+    plugin_version = "2.0.0"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -41,12 +42,12 @@ class CaptchaSignIn(_PluginBase):
     _notify = True
     _cron = "15 8 * * *"
     _site_ids: List[int] = []
+    _browserless_tokens = ""
+    _site_options: Dict[str, Any] = {}
     _concurrency = 2
     _retry_delay_minutes = 10
     _retry_count = 1
     _browserless_url = DEFAULT_BROWSERLESS_URL
-    _browserless_token = ""
-    _token_groups: List[Dict[str, Any]] = []
     _site_tokens: Dict[int, str] = {}
     _site_rules = ""
     _run_once = False
@@ -56,19 +57,36 @@ class CaptchaSignIn(_PluginBase):
         self._enabled = bool(config.get("enabled", False))
         self._notify = bool(config.get("notify", True))
         self._cron = str(config.get("cron") or "15 8 * * *")
-        self._token_groups = self._load_token_groups(config)
-        self._site_tokens = {}
-        for group in self._token_groups:
+        groups = []
+        if config.get("config_layout") == "site" or "browserless_tokens" in config:
+            self._site_ids = self._ids(config.get("site_ids", []))
+            self._browserless_tokens = str(config.get("browserless_tokens") or "")
+        else:
+            groups = self._load_token_groups(config)
+            self._site_ids = self._ids(list(config.get("direct_site_ids") or []) +
+                                       [site_id for group in groups for site_id in group["site_ids"]])
+            self._browserless_tokens = "\n".join(dict.fromkeys(group["token"] for group in groups if group["token"]))
+        tokens = [line.strip() for line in self._browserless_tokens.splitlines() if line.strip()]
+        self._browserless_tokens = "\n".join(tokens)
+        self._site_options = {key: value for key, value in config.items()
+                              if re.fullmatch(r"site_\d+_(mode|token|button_source|button_text|success_source|success_text)", key)}
+        # Migrate old groups by the token value so their original assignment
+        # survives compaction of empty slots and duplicate group tokens.
+        for group in groups:
+            number = tokens.index(group["token"]) + 1 if group["token"] in tokens else 0
             for site_id in group["site_ids"]:
-                # Keep the first assignment when a site was selected twice.
-                self._site_tokens.setdefault(site_id, group["token"])
-        self._site_ids = list(self._site_tokens)
+                self._site_options.setdefault("site_%s_token" % site_id, number)
+        self._site_tokens = {}
+        for site_id in self._site_ids:
+            raw = self._site_options.get("site_%s_token" % site_id, 0)
+            number = int(raw) if str(raw).isdigit() else 0
+            self._site_options["site_%s_token" % site_id] = number
+            self._site_tokens[site_id] = tokens[number - 1] if 0 < number <= len(tokens) else ""
         self._concurrency = max(1, min(int(config.get("concurrency") or 2), 5))
         self._retry_delay_minutes = max(1, min(int(config.get("retry_delay_minutes") or 10), 1440))
         retry_count = config.get("retry_count")
         self._retry_count = max(0, min(int(1 if retry_count in (None, "") else retry_count), 5))
         self._browserless_url = str(config.get("browserless_url") or DEFAULT_BROWSERLESS_URL).strip()
-        self._browserless_token = str(config.get("browserless_token") or "").strip()
         self._site_rules = str(config.get("site_rules") or "")
         self._run_once = bool(config.get("run_once", False))
         if self._run_once:
@@ -76,17 +94,16 @@ class CaptchaSignIn(_PluginBase):
             self.update_config(self._config())
             self.run_sign_in()
 
+    @staticmethod
+    def _ids(values: Any) -> List[int]:
+        return list(dict.fromkeys(int(value) for value in (values or []) if str(value).isdigit()))
+
     def _config(self) -> Dict[str, Any]:
-        config = {"enabled": self._enabled, "notify": self._notify, "cron": self._cron,
+        return {"config_layout": "site", "config_version": self.plugin_version, "enabled": self._enabled, "notify": self._notify, "cron": self._cron,
                 "site_ids": self._site_ids, "concurrency": self._concurrency,
                 "retry_delay_minutes": self._retry_delay_minutes, "retry_count": self._retry_count,
-                "browserless_url": self._browserless_url, "browserless_token": self._browserless_token,
-                "site_rules": self._site_rules, "run_once": self._run_once}
-        for index in range(1, self.token_group_slots + 1):
-            group = self._token_groups[index - 1] if index <= len(self._token_groups) else {"token": "", "site_ids": []}
-            config[f"browserless_token_{index}"] = group["token"]
-            config[f"site_ids_{index}"] = group["site_ids"]
-        return config
+                "browserless_url": self._browserless_url, "browserless_tokens": self._browserless_tokens,
+                "site_rules": self._site_rules, "run_once": self._run_once, **self._site_options}
 
     @classmethod
     def _load_token_groups(cls, config: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -131,45 +148,109 @@ class CaptchaSignIn(_PluginBase):
                  "func": self.run_sign_in, "kwargs": {}}]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        sites = SiteOper().list_order_by_pri()
-        options = [{"title": site.name, "value": site.id} for site in sites if getattr(site, "cookie", None)]
-        return [{"component": "VForm", "content": [
-            {"component": "VRow", "content": [
-                {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSwitch", "props": {"model": "enabled", "label": "启用插件"}}]},
-                {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSwitch", "props": {"model": "notify", "label": "签到后发送通知"}}]},
-                {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSwitch", "props": {"model": "run_once", "label": "保存后立即执行一次"}}]},
+        sites = [site for site in SiteOper().list_order_by_pri() if getattr(site, "cookie", None)]
+        options = [{"title": site.name, "value": site.id} for site in sites]
+        defaults = self._config()
+        try:
+            rules = parse_rules(self._site_rules)
+        except ValueError:
+            rules = {}
+
+        def field(component: str, model: str, label: str, **props: Any) -> dict:
+            return {"component": component, "props": {"model": model, "label": label, **props}}
+
+        def row(*fields: dict) -> dict:
+            return {"component": "VRow", "content": [
+                {"component": "VCol", "props": {"cols": 12, "md": 12 // len(fields)}, "content": [item]}
+                for item in fields]}
+
+        content = [
+            row(field("VSwitch", "enabled", "启用插件"), field("VSwitch", "notify", "签到后发送通知"),
+                field("VSwitch", "run_once", "保存后立即执行一次")),
+            row(field("VCronField", "cron", "执行周期", placeholder="15 8 * * *"),
+                field("VTextField", "concurrency", "并发数", type="number", min=1, max=5)),
+            row(field("VTextField", "retry_delay_minutes", "失败后等待分钟数", type="number", min=1, max=1440),
+                field("VTextField", "retry_count", "失败后重试次数", type="number", min=0, max=5,
+                      hint="额外执行次数；0 为关闭", **{"persistent-hint": True})),
+            row(field("VTextarea", "browserless_tokens", "Browserless Token（每行一个）", rows=3,
+                      autocomplete="off", spellcheck=False, hint="明文显示，每行一个；在下方每个站点中单独选择 Token 编号。可留空；农场和本地浏览器模式不使用 Token。",
+                      **{"persistent-hint": True})),
+            row(field("VSelect", "site_ids", "签到站点", items=options, multiple=True, chips=True,
+                      hint="选择后自动显示下方对应站点的设置；仅显示已保存 Cookie 的站点。", **{"persistent-hint": True})),
+            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact",
+             "text": "图片验证码优先使用 MP 系统 OCR，失败后 Browserless 兜底；天空支持专用 HTTP/OCR。农场仅直连；猪猪默认使用 MP 本地浏览器，不转交云端。按钮与成功确认选择默认时沿用内置或高级规则。"}},
+            {"component": "VCardTitle", "text": "站点设置列表"},
+            {"component": "VAlert", "props": {"type": "info", "variant": "tonal",
+             "show": "{{ !(site_ids || []).length }}", "text": "请先在上方选择签到站点。"}},
+        ]
+        mode_items = [
+            {"title": "默认（内置规则）", "value": "default"},
+            {"title": "点击确定", "value": "open_page"},
+            {"title": "验证码", "value": "image"},
+            {"title": "CF盾", "value": "cloudflare"},
+            {"title": "弹窗验证码", "value": "trigger_image"},
+            {"title": "Altcha 验证", "value": "altcha"},
+            {"title": "农场直连", "value": "farm"},
+            {"title": "本地浏览器", "value": "local_browser"},
+        ]
+        choice_items = [{"title": "默认", "value": "default"}, {"title": "自定义", "value": "custom"}]
+        token_items = "{{ [{title: '不使用 Browserless', value: 0}, ...(browserless_tokens || '').split(/\\r?\\n/).map(t => t.trim()).filter(Boolean).map((t, i) => ({title: 'Token ' + (i + 1), value: i + 1}))] }}"
+        site_cards = []
+        for site in sites:
+            prefix = "site_%s_" % site.id
+            try:
+                rule = resolve_rule(self._site_dict(site), rules)
+            except ValueError:
+                rule = {"mode": "open_page"}
+            farm = rule["mode"] == "farm"
+            for suffix, value in {"mode": rule["mode"], "token": 0, "button_source": "default", "button_text": "",
+                                  "success_source": "default", "success_text": ""}.items():
+                defaults.setdefault(prefix + suffix, value)
+            if farm:
+                defaults[prefix + "mode"] = "farm"
+                defaults[prefix + "token"] = 0
+            fields = [row(field("VSelect", prefix + "mode", "模式", items=mode_items, disabled=farm),
+                          field("VSelect", prefix + "token", "使用 Token", items=token_items,
+                                disabled="{{ ['farm', 'local_browser'].includes(%smode) }}" % prefix))]
+            if rule.get("http_handler") == "hdsky":
+                fields.append({"component": "VAlert", "props": {"type": "info", "variant": "tonal",
+                               "text": "天空先通过 HTTP 接口获取验证码并调用 MP OCR；未确认成功时才使用所选 Browserless Token。"}})
+            if rule["mode"] == "local_browser":
+                fields.append({"component": "VAlert", "props": {"type": "info", "variant": "tonal",
+                               "text": "使用 MP 本地浏览器及该站代理配置；默认不切换云端出口。安全验证未通过或浏览器不可用时直接显示失败。"}})
+            if farm:
+                fields.append({"component": "VAlert", "props": {"type": "info", "variant": "tonal",
+                               "text": "农场仅直连签到，不调用 OCR 或 Browserless；按钮文字不适用。"}})
+            else:
+                fields.extend([
+                    row(field("VSelect", prefix + "button_source", "按钮文字", items=choice_items)),
+                    {"component": "VRow", "props": {"show": "{{ %sbutton_source === 'custom' }}" % prefix},
+                     "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
+                         field("VTextField", prefix + "button_text", "自定义按钮文字", placeholder="例如：立即签到")]}]},
+                ])
+            fields.extend([
+                row(field("VSelect", prefix + "success_source", "成功文字确认", items=choice_items)),
+                {"component": "VRow", "props": {"show": "{{ %ssuccess_source === 'custom' }}" % prefix},
+                 "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
+                     field("VTextarea", prefix + "success_text", "自定义成功确认文字", rows=2,
+                           hint="每行一个，匹配任意一项即确认成功；请填写明确的签到结果文字。", **{"persistent-hint": True})]}]},
+            ])
+            site_cards.append({"component": "VCard", "props": {"variant": "outlined", "class": "mb-3",
+                            "style": "{{ ({order: (site_ids || []).map(String).indexOf('%s')}) }}" % site.id,
+                            "show": "{{ (site_ids || []).map(String).includes('%s') }}" % site.id},
+                            "content": [{"component": "VCardTitle", "text": str(site.name)},
+                                        {"component": "VCardText", "content": fields}]})
+        content.append({"component": "div", "props": {"style": {"display": "flex", "flexDirection": "column"}}, "content": site_cards})
+        content.append({"component": "VExpansionPanels", "content": [
+            {"component": "VExpansionPanel", "content": [
+                {"component": "VExpansionPanelTitle", "text": "高级设置（可选）"},
+                {"component": "VExpansionPanelText", "content": [
+                    field("VTextField", "browserless_url", "Browserless 地址", placeholder=DEFAULT_BROWSERLESS_URL),
+                    field("VTextarea", "site_rules", "自定义站点规则 JSON", rows=8,
+                          hint="用于签到路径、验证码选择器等高级设置；上方每站点的自定义设置优先。", **{"persistent-hint": True})]},
             ]},
-            {"component": "VRow", "content": [
-                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VCronField", "props": {"model": "cron", "label": "执行周期", "placeholder": "5 位 Cron；例如 15 8 * * *"}}]},
-                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "concurrency", "label": "并发数", "type": "number", "min": 1, "max": 5, "hint": "同时处理 1–5 个站点，建议 2", "persistent-hint": True}}]},
-            ]},
-            {"component": "VRow", "content": [
-                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_delay_minutes", "label": "失败后等待分钟数", "type": "number", "min": 1, "max": 1440, "hint": "仅失败站点重试前等待；默认 10 分钟", "persistent-hint": True}}]},
-                {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "retry_count", "label": "失败后重试次数", "type": "number", "min": 0, "max": 5, "hint": "额外执行次数；0 为关闭，默认 1 次", "persistent-hint": True}}]},
-            ]},
-            {"component": "VDivider", "props": {"class": "my-4"}},
-            {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact"}, "content": [
-                {"component": "span", "text": "可配置最多 5 组 Browserless Token。每组 Token 只会用于其下选择的站点；同一站点重复选择时以靠前的组为准。Token、Cookie 和验证码内容均不会写入日志或签到记录。首次使用请先 "},
-                {"component": "a", "props": {"href": "https://www.browserless.io/signup/email?plan=free", "target": "_blank", "rel": "noopener noreferrer"}, "text": "注册 Browserless 账号"},
-                {"component": "span", "text": "，登录 "},
-                {"component": "a", "props": {"href": "https://browserless.io/account/", "target": "_blank", "rel": "noopener noreferrer"}, "text": "账户控制台"},
-                {"component": "span", "text": "，在 API Key 区域复制 Token 后填入插件设置。"},
-            ]},
-            {"component": "VRow", "content": [
-                {"component": "VCol", "props": {"cols": 12}, "content": [{"component": "VTextField", "props": {"model": "browserless_url", "label": "Browserless 地址", "placeholder": DEFAULT_BROWSERLESS_URL, "hint": "所有 Token 共用；可填写服务根地址或完整 /stealth/bql 地址", "persistent-hint": True}}]},
-            ]},
-            *[
-                {"component": "VCard", "props": {"variant": "outlined", "class": "mb-3"}, "content": [
-                    {"component": "VCardTitle", "text": f"Token {index}"},
-                    {"component": "VCardText", "content": [{"component": "VRow", "content": [
-                        {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": f"browserless_token_{index}", "label": f"Browserless Token {index}", "type": "password", "hint": "留空则该组不会执行；不会写入日志", "persistent-hint": True}}]},
-                        {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VSelect", "props": {"model": f"site_ids_{index}", "label": f"使用 Token {index} 的签到站点", "items": options, "multiple": True, "chips": True, "hint": "仅显示已在 MoviePilot 保存 Cookie 的站点", "persistent-hint": True}}]},
-                    ]}]},
-                ]}
-                for index in range(1, self.token_group_slots + 1)
-            ],
-                {"component": "VTextarea", "props": {"model": "site_rules", "label": "自定义站点规则 JSON（可留空）", "rows": 10, "hint": "键使用域名或站点 ID；mode 为 image、trigger_image、cloudflare、open_page 或 altcha。内置 OpenCD、包子、LuckPT、OshenPT、YemaPT、HDSky 与 Cloudflare 站点规则。", "persistent-hint": True}},
-        ]}], self._config()
+        ]})
+        return [{"component": "VForm", "content": content}], defaults
 
     def get_page(self) -> List[dict]:
         records = self.get_data("latest") or []
@@ -239,17 +320,12 @@ class CaptchaSignIn(_PluginBase):
         for site, token in selected:
             previous = daily_state.get(site_state_key(self._site_dict(site)))
             if isinstance(previous, dict) and previous.get("status") in {"success", "already"}:
-                results.append(dict(previous, message="今日已成功签到，已跳过 Browserless 调用"))
-            elif not token:
-                results.append({"site": str(getattr(site, "name", None) or getattr(site, "url", "未知站点")), "site_id": str(getattr(site, "id", "")), "status": "failed", "message": "该站点未配置 Browserless Token"})
+                results.append(dict(previous, message="今日已成功签到，已跳过网络签到"))
             else:
                 pending.append((site, token))
         if not pending:
-            logger.info("验证码站点签到：%s 个站点今日已成功，跳过 Browserless 调用", len(results))
+            logger.info("验证码站点签到：%s 个站点今日已成功，跳过网络签到", len(results))
             self._finish(results)
-            return
-        if not self._browserless_url:
-            self._finish(results + [{"site": "配置", "status": "failed", "message": "未配置 Browserless 地址"}])
             return
         try:
             rules = parse_rules(self._site_rules)
@@ -272,25 +348,43 @@ class CaptchaSignIn(_PluginBase):
 
     def _run_sites(self, sites: List[Tuple[Any, str]], rules: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]:
         with ThreadPoolExecutor(max_workers=min(self._concurrency, len(sites))) as executor:
-            return list(executor.map(lambda item: self._sign_one(item[0], rules, BrowserlessSigner(self._browserless_url, item[1])), sites))
+            return list(executor.map(lambda item: self._sign_one(item[0], rules, self._make_signer(item[1])), sites))
+
+    def _make_signer(self, token: str) -> HybridSigner:
+        from app.core.config import settings
+        direct = HttpSigner(self._recognize_captcha, proxies=getattr(settings, "PROXY", None))
+        local = LocalBrowserSigner(proxies=getattr(settings, "PROXY", None))
+        return HybridSigner(direct, lambda: BrowserlessSigner(self._browserless_url, token)
+                            if token and self._browserless_url else None, local=local)
+
+    @staticmethod
+    def _recognize_captcha(image_b64: str) -> str:
+        # Use the same endpoint and payload as MP OcrHelper. Read current settings
+        # on every call so custom OCR_HOST changes take effect without reload.
+        import requests
+        from app.core.config import settings
+        address = str(settings.OCR_HOST or "https://movie-pilot.org").rstrip("/")
+        response = requests.post(address + "/captcha/base64", json={"base64_img": image_b64}, timeout=30)
+        response.raise_for_status()
+        return str(response.json().get("result") or "")
 
     @staticmethod
     def _site_dict(site: Any) -> Dict[str, Any]:
         return {key: getattr(site, key, None) for key in ("id", "name", "url", "cookie", "ua", "proxy")}
 
-    def _sign_one(self, site: Any, rules: Dict[str, Dict[str, Any]], signer: BrowserlessSigner) -> Dict[str, str]:
+    def _sign_one(self, site: Any, rules: Dict[str, Dict[str, Any]], signer: HybridSigner) -> Dict[str, str]:
         info = self._site_dict(site)
         site_name = str(info.get("name") or info.get("url") or "未知站点")
         sign_url = str(info.get("url") or "")
         logger.info("验证码站点签到：开始 %s", site_name)
         try:
-            rule = resolve_rule(info, rules)
+            rule = resolve_rule(info, rules, self._site_options)
             sign_url = target_url(sign_url, str(rule["path"]), rule.get("route_fragment"))
             outcome: SignResult = signer.sign(info, rule)
         except ValueError as error:
             outcome = SignResult("failed", str(error))
         except Exception:
-            logger.exception("验证码站点签到失败：%s", info.get("name"))
+            logger.error("验证码站点签到执行异常：%s", info.get("name"))
             outcome = SignResult("failed", "签到执行出现未预期错误")
         logger.info("验证码站点签到：完成 %s（%s）", site_name, outcome.status)
         return {"site": site_name, "site_id": str(info.get("id") or ""), "state_key": site_state_key(info), "url": sign_url, "status": outcome.status, "message": outcome.message,

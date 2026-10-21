@@ -17,9 +17,11 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
 ### [验证码站点签到](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/captchasignin)
 
-  支持 MoviePilot V2 与 V3，通过 Browserless BrowserQL 使用已保存的站点 Cookie 完成 PT 图片验证码、弹窗图片验证码、Cloudflare 页面挑战、Turnstile 与 Altcha 签到。
+  支持 MoviePilot V2/V3，复用站点 Cookie。普通图片验证码优先调用 MP 系统配置的 OCR 服务（`OCR_HOST`），失败后使用对应站点的 Browserless Token 兜底，无需额外安装 OCR 模型。新增自由农场 `0ff.cc` / `pt.0ff.cc` 仅直连签到，失败直接报告，不调用 Browserless；保留 OpenCD 首页签到记录严格复查。
 
-  在插件设置中填写 Browserless 地址和 Token，并选择已经配置 Cookie 的站点。默认云端地址为 `https://production-sfo.browserless.io`，也可使用自建服务根地址或完整 `/stealth/bql` 地址。首次使用请先[注册 Browserless 账号](https://www.browserless.io/signup/email?plan=free)，登录[账户控制台](https://browserless.io/account/)并在 **API Key** 区域复制 Token。内置 OpenCD、包子、慕雪阁、OshenPT、LuckPT、YemaPT、HDSky、`dstudio.me`、`mua.xloli.cc` 和 `share.ilolicon.com` 的签到规则；YemaPT 支持 Hash 路由、Browserless 原生 Altcha 点击与 payload 等待，HDSky 支持先打开签到弹窗再处理图片验证码，并以“已签到”判定成功。结果表按“站点、状态、最后运行时间、结果”展示，成功状态统一显示“签到成功”，站点名称可在新标签页直接打开对应签到页面。当天成功或已签到的站点会被本地记录并跳过后续 Browserless 调用，失败站点才会继续执行与重试。失败站点默认会在 10 分钟后额外重试 1 次，可在设置中调整或关闭。其他站点可通过“自定义站点规则 JSON”扩展。包子在当天已签到时会直接报告状态，慕雪阁点击“立即签到”即可完成。
+  配置以站点为中心：Browserless Token 明文每行一个，选择签到站点后立即显示对应设置；每站独立选择 Token 编号、签到模式、默认或自定义按钮文字与成功确认文字。旧版单 Token、五组分组及直连配置自动迁移并保留对应关系。弹窗验证码、Cloudflare、Turnstile、Altcha 等需要浏览器交互的流程继续使用 Browserless。内置农场、OpenCD、包子、OshenPT、Vc-lib、思齐、NovaHD、慕雪阁、LuckPT、YemaPT、HDSky 等规则。当日已成功站点跳过所有网络签到，失败站点默认 10 分钟后额外重试 1 次，结果通过 MP 通知渠道发送。详情见插件目录 README。
+
+  天空 HDSky 优先使用专用 HTTP/MP OCR 接口，验证码被拒绝时有限次刷新，提交异常时回查确认，失败后再用所选 Browserless Token。猪猪 Piggo 新增“本地浏览器”模式，使用 MP 运行环境及站点代理的出口处理签到，不自动切换云端 Browserless；旧配置可在每站模式中改选。
 
   - V2：[`plugins.v2/captchasignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v2/captchasignin)
   - V3：[`plugins.v3/captchasignin`](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/captchasignin)
