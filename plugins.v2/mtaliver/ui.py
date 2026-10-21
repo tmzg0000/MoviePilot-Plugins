@@ -3,7 +3,7 @@ import json
 
 # FormRender evaluates onClick with the current `model` in scope. Use the host's
 # API client so its configured base URL, bearer token and reverse proxy work.
-_FIELDS = ('enabled', 'notify', 'cron', 'site_url', 'username', 'password', 'email',
+_FIELDS = ('enabled', 'notify', 'cron', 'site_url', 'username', 'email',
            'email_code', 'api_key', 'api_base', 'ratio_warn', 'verify_minutes',
            'interval_days', 'api_verify')
 
@@ -25,6 +25,9 @@ def action_handler(action: str) -> str:
         const payload = {};
         for (const key of FIELDS) payload[key] = model[key];
         if (ACTION !== 'login') delete payload.email_code;
+        // Unbound input: the dialog's Save action never sees a password model.
+        const passwordInput = document.getElementById('mtaliver-login-password');
+        if (ACTION !== 'refresh_session') payload.password = passwordInput ? passwordInput.value : '';
         const reply = await window.MoviePilotAPI.post(
           'plugin/MtAliver/' + ACTION, payload, {timeout: 240000});
         model.auth_success = Boolean(reply && reply.success);
@@ -32,7 +35,15 @@ def action_handler(action: str) -> str:
       } catch (e) {
         model.auth_status = '请求未完成，请稍后重开结果页核对状态；若未执行，请重试';
       } finally {
-        if (ACTION === 'login') model.email_code = '';
+        if (ACTION === 'login') {
+          model.email_code = '';
+          const input = document.getElementById('mtaliver-login-password');
+          if (input) {
+            input.value = '';
+            input.dispatchEvent(new Event('input', {bubbles:true}));
+            input.dispatchEvent(new Event('change', {bubbles:true}));
+          }
+        }
         model.auth_busy = false;
       }
     }'''.replace('ACTION', json.dumps(action)).replace('FIELDS', json.dumps(_FIELDS))

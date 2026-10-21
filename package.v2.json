@@ -198,7 +198,7 @@
   },
   "MtAliver": {
     "name": "馒头保活助手",
-    "description": "手动邮箱验证后保存浏览器会话，每日访问 M-Team，无需 TOTP 密钥。",
+    "description": "手动邮箱验证后保存浏览器会话，每日访问 M-Team。",
     "labels": "站点,保活",
     "version": "1.5.0",
     "icon": "signin.png",

@@ -75,7 +75,7 @@ class MtAliver(_PluginBase):
     plugin_name = "馒头保活助手"
     plugin_desc = "手动邮箱验证后保存浏览器会话，每日访问 M-Team，失效时提醒重新验证。"
     plugin_icon = "signin.png"
-    plugin_version = "1.5.0"
+    plugin_version = "1.5.1"
     plugin_author = "tmzg0000（原作者 qingyukb）"
     author_url = "https://blog.qyus.cn"
     plugin_config_prefix = "mtaliver_"
@@ -103,6 +103,7 @@ class MtAliver(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.stop_service()
+        self._password = ""
         if config:
             self._enabled = bool(config.get("enabled"))
             self._notify = bool(config.get("notify", True))
@@ -110,7 +111,9 @@ class MtAliver(_PluginBase):
             self._cron = str(config.get("cron") or "35 1,9,21 * * *").strip()
             self._site_url = str(config.get("site_url") or DEFAULT_SITE).strip().rstrip("/")
             self._username = str(config.get("username") or "").strip()
-            self._password = str(config.get("password") or "")
+            # Legacy passwords are read only to rebind existing sessions, then
+            # removed from persistent config. Never return them to the frontend.
+            old_password = str(config.get("password") or "")
             self._email = str(config.get("email") or "").strip()
             self._email_code = str(config.get("email_code") or "").strip()
             self._request_email = bool(config.get("request_email"))
@@ -129,6 +132,17 @@ class MtAliver(_PluginBase):
             except (TypeError, ValueError):
                 self._interval_days = 1
             self._api_verify = bool(config.get("api_verify", True))
+            if old_password:
+                import hashlib
+                import json
+                state = self.get_data("browser_state") or {}
+                legacy_id = hashlib.sha256(json.dumps(
+                    [self._username, old_password, self._site_url], ensure_ascii=False).encode()).hexdigest()
+                if state.get("identity") == legacy_id:
+                    self.save_data("browser_state", dict(state, identity=session_identity(self._username, self._site_url)))
+            if "password" in config or "login_password" in config:
+                self._save_config()
+            old_password = ""
         if self._run_once or self._request_email or self._email_code:
             self._run_once = False
             self._save_config()
@@ -159,7 +173,7 @@ class MtAliver(_PluginBase):
         self.update_config({
             "enabled": self._enabled, "notify": self._notify, "run_once": False,
             "cron": self._cron, "site_url": self._site_url, "username": self._username,
-            "password": self._password, "email": self._email,
+            "email": self._email,
             "email_code": "", "request_email": False,
             "api_key": self._api_key, "api_base": self._api_base,
             "ratio_warn": self._ratio_warn, "verify_minutes": self._verify_minutes,
@@ -246,11 +260,13 @@ class MtAliver(_PluginBase):
             return {"success": False, "message": "已有任务正在执行，请完成后重试"}
         try:
             username = str(data.get("username", self._username) or "").strip()
-            password = str(data.get("password", self._password) or "")
+            password = str(data.get("password") or "") if action != "refresh_session" else ""
             email = str(data.get("email", self._email) or "").strip()
             code = str(data.get("email_code") or "").strip()
-            if not username or not password:
-                return {"success": False, "message": "请填写账号和密码"}
+            if not username:
+                return {"success": False, "message": "请填写账号"}
+            if action != "refresh_session" and not password:
+                return {"success": False, "message": "请临时输入登录密码（不会保存）"}
             if action != "refresh_session" and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
                 return {"success": False, "message": "请填写有效的绑定邮箱"}
             if action == "login" and not re.fullmatch(r"[0-9]{6}", code):
@@ -290,6 +306,7 @@ class MtAliver(_PluginBase):
                 message = "已登录并保存会话；活动校验提示：" + message
             return {"success": success, "message": message, "authenticated": authenticated}
         finally:
+            self._password = ""
             self._email_code, self._request_email = "", False
             self._run_lock.release()
 
@@ -310,7 +327,7 @@ class MtAliver(_PluginBase):
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         saved_state = self.get_data("browser_state") or {}
-        has_session = saved_state.get("identity") == session_identity(self._username, self._password, self._site_url)
+        has_session = saved_state.get("identity") == session_identity(self._username, self._site_url)
         def field(kind: str, model: str, label: str, md: int = 6, **props: Any) -> Dict[str, Any]:
             return {"component": "VCol", "props": {"cols": 12, "md": md},
                     "content": [{"component": kind,
@@ -330,8 +347,12 @@ class MtAliver(_PluginBase):
                 hint("VSwitch", "notify", "发送通知", "执行结果通过 MoviePilot 通知发送", 6)),
             # 账号与二次验证
             row(hint("VTextField", "username", "M-Team 账号", "站点登录账号", 4),
-                hint("VTextField", "password", "密码", "站点登录密码", 4,
-                     type="password"),
+                {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{
+                    "component": "VTextField", "props": {
+                        "id": "mtaliver-login-password", "label": "登录密码（仅本次使用）",
+                        "type": "password", "autocomplete": "new-password",
+                        "hint": "仅临时用于获取验证码和登录，不保存、不回填；登录后清空",
+                        "persistent-hint": True}}]},
                 hint("VTextField", "email", "绑定邮箱",
                      "填写 M-Team 账号绑定的邮箱，用于发送验证码", 4)),
             row(hint("VTextField", "api_key", "API Key（可选）",
@@ -379,7 +400,7 @@ class MtAliver(_PluginBase):
         ]}], {
             "enabled": self._enabled, "notify": self._notify, "run_once": False,
             "cron": self._cron, "site_url": self._site_url, "username": self._username,
-            "password": self._password, "email": self._email,
+            "email": self._email,
             "email_code": "", "request_email": False,
             "api_key": self._api_key, "api_base": self._api_base,
             "ratio_warn": self._ratio_warn, "verify_minutes": self._verify_minutes,

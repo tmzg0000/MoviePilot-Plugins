@@ -309,9 +309,9 @@ RESTORE_STORAGE_JS = r"""
 """
 
 
-def session_identity(username: str, password: str, site_url: str) -> str:
+def session_identity(username: str, site_url: str) -> str:
     import hashlib
-    return hashlib.sha256(json.dumps([username, password, site_url],
+    return hashlib.sha256(json.dumps([username, site_url],
                                      ensure_ascii=False).encode()).hexdigest()
 
 
@@ -330,10 +330,12 @@ def keepalive_login(username: str, password: str, email: str = "", email_code: s
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
         return {"ok": False, "message": "站点地址必须是有效的 HTTPS 地址"}
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    identity = session_identity(username, password, base)
+    identity = session_identity(username, base)
     state = dict(state or {}) if (state or {}).get('identity') == identity else {}
-    if not username or not password:
-        return {"ok": False, "message": "请先填写账号、密码和绑定邮箱"}
+    if not username:
+        return {"ok": False, "message": "请先填写账号"}
+    if (request_email or email_code) and not password:
+        return {"ok": False, "message": "请临时输入登录密码（不会保存）"}
     if email_code and not re.fullmatch(r'[0-9]{6}', email_code):
         return {"ok": False, "message": "邮箱验证码必须为 6 位数字"}
     if not state and not request_email and not email_code:

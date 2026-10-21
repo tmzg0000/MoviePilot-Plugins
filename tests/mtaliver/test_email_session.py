@@ -136,7 +136,7 @@ class BrowserTests(unittest.TestCase):
         return result, page, helper
 
     def state(self):
-        return {'identity': C.session_identity('user', 'pass', C.DEFAULT_SITE),
+        return {'identity': C.session_identity('user', C.DEFAULT_SITE),
                 'origin': C.DEFAULT_SITE, 'cookies': [], 'local': {'auth': 'old'}}
 
     def test_send_requires_server_confirmation(self):
@@ -184,6 +184,16 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertNotIn(C.SEND_EMAIL_JS, [c[0] for c in page.calls])
 
+    def test_browser_reuses_session_without_password(self):
+        page = Page('reuse')
+        helper = Mock()
+        helper.return_value.action.side_effect = lambda **kw: kw['callback'](page)
+        MODULES['app.helper.browser'].PlaywrightHelper = helper
+        with patch.dict(sys.modules, MODULES):
+            result = C.keepalive_login('user', '', state=self.state())
+        self.assertTrue(result['ok'])
+        self.assertNotIn(C.LOGIN_JS_FILL, [call[0] for call in page.calls])
+
     def test_changed_account_and_invalid_code_do_not_start_browser(self):
         state = self.state()
         state['identity'] = 'another-account'
@@ -220,6 +230,49 @@ class PluginTests(unittest.TestCase):
         return {"username": "new-user", "password": "new-pass", "email": "new@example.org",
                 "api_key": "key", "enabled": True, "notify": False, **extra}
 
+    def test_password_not_in_form_or_any_persisted_config(self):
+        form, model = self.plugin.get_form()
+        self.assertNotIn('password', model)
+        fields = []
+        def visit(nodes):
+            for node in nodes:
+                if node.get('props', {}).get('id') == 'mtaliver-login-password':
+                    fields.append(node['props'])
+                visit(node.get('content', []))
+        visit(form)
+        self.assertEqual(len(fields), 1)
+        self.assertEqual(fields[0]['type'], 'password')
+        self.assertNotIn('model', fields[0])
+        self.assertNotIn('value', fields[0])
+        with patch.object(M, 'fetch_profile', return_value=(None, 'offline')), patch.object(M, 'keepalive_login', return_value={'ok': False, 'email_sent': True, 'message': 'sent'}):
+            self.plugin.api_send_code(self.form_data(password='unique-transient-password'))
+        for call in self.plugin.update_config.call_args_list:
+            self.assertNotIn('password', call.args[0])
+            self.assertNotIn('unique-transient-password', json.dumps(call.args[0]))
+        self.assertEqual(self.plugin._password, '')
+        self.assertNotIn('unique-transient-password', json.dumps(self.data))
+
+    def test_legacy_plaintext_removed_and_existing_session_migrated(self):
+        import hashlib
+        old_id = hashlib.sha256(json.dumps(['user', 'legacy-secret', C.DEFAULT_SITE], ensure_ascii=False).encode()).hexdigest()
+        self.data['browser_state'] = {'identity': old_id, 'local': {'auth': 'existing-token'}}
+        self.plugin.init_plugin({'username': 'user', 'password': 'legacy-secret', 'site_url': C.DEFAULT_SITE})
+        self.assertEqual(self.plugin._password, '')
+        saved = self.plugin.update_config.call_args.args[0]
+        self.assertNotIn('password', saved)
+        self.assertNotIn('legacy-secret', json.dumps(saved))
+        self.assertEqual(self.data['browser_state']['identity'], C.session_identity('user', C.DEFAULT_SITE))
+        self.assertEqual(self.data['browser_state']['local']['auth'], 'existing-token')
+        self.assertNotIn('password', self.plugin.get_form()[1])
+
+    def test_refresh_without_password_and_exception_clears_temporary_password(self):
+        with patch.object(M, 'fetch_profile', return_value=(None, 'offline')), patch.object(M, 'keepalive_login', return_value={'ok': True, 'message': 'refreshed'}) as login:
+            self.plugin.api_refresh_session(self.form_data(password=''))
+        self.assertEqual(login.call_args.args[1], '')
+        with patch.object(M, 'keepalive_login', side_effect=RuntimeError('failure')):
+            self.plugin.api_send_code(self.form_data(password='temporary'))
+        self.assertEqual(self.plugin._password, '')
+
     def test_buttons_use_live_form_and_authenticated_post_api(self):
         form, defaults = self.plugin.get_form()
         serialized = json.dumps(form, ensure_ascii=False)
@@ -254,6 +307,8 @@ class PluginTests(unittest.TestCase):
         self.assertIn('已登录并保存会话', result['message'])
         self.assertFalse(login.call_args.kwargs['request_email'])
         self.assertEqual(login.call_args.kwargs['email_code'], '123456')
+        self.assertEqual(self.plugin._password, '')
+        self.assertNotIn('password', self.plugin.update_config.call_args.args[0])
         self.assertIn('browser_state', self.data)
         self.assertNotIn('123456', json.dumps(self.data))
         self.assertEqual(self.plugin.update_config.call_args.args[0]['email_code'], '')
