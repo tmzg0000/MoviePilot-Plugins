@@ -121,10 +121,36 @@ class LocalBrowserTests(unittest.TestCase):
         self.assertEqual(result.status,'success')
         self.page.click.assert_called_once()
         self.assertEqual(self.action.call_args.kwargs['url'],'about:blank')
-        self.assertEqual(self.action.call_args.kwargs['cookies'],'uid=2')
+        self.assertIsNone(self.action.call_args.kwargs['cookies'])
+        self.page.context.add_cookies.assert_called_once_with([
+            {'name':'uid','value':'2','url':'https://piggo.me/'}])
         self.assertEqual(self.action.call_args.kwargs['ua'],'Pig-UA')
         self.assertEqual(self.action.call_args.kwargs['proxies'],self.proxy)
         self.page.goto.assert_called_once_with('https://piggo.me/index.php',wait_until='domcontentloaded',timeout=30000)
+
+    def test_browser_cookie_jar_is_seeded_before_navigation(self):
+        events=[]
+        self.page.context.add_cookies.side_effect=lambda cookies:events.append(('cookies',cookies))
+        self.page.goto.side_effect=lambda *args,**kwargs:events.append(('goto',args[0]))
+        self.page.content.return_value='今日已签到'
+        site=dict(self.site,cookie='uid=2; jwt=abc==; empty=; quoted="hello world"')
+        self.assertIn(self.signer.sign(site,self.rule).status,{'success','already'})
+        self.assertEqual([item[0] for item in events],['cookies','goto'])
+        self.assertEqual({item['name']:item['value'] for item in events[0][1]},
+                         {'uid':'2','jwt':'abc==','empty':'','quoted':'hello world'})
+        self.page.set_extra_http_headers.assert_not_called()
+
+    def test_invalid_cookie_does_not_start_browser(self):
+        result=self.signer.sign(dict(self.site,cookie='not-a-cookie'),self.rule)
+        self.assertEqual(result.status,'failed')
+        self.action.assert_not_called()
+
+    def test_cookie_injection_failure_stops_before_navigation(self):
+        self.page.context.add_cookies.side_effect=RuntimeError('secret-cookie-value')
+        result=self.signer.sign(self.site,self.rule)
+        self.assertEqual(result.status,'failed')
+        self.assertNotIn('secret-cookie-value',result.message)
+        self.page.goto.assert_not_called()
 
     def test_already_signed_does_not_click(self):
         self.page.content.return_value='今日已签到'

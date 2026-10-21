@@ -50,11 +50,13 @@ MoviePilot V2/V3 通用的 PT 自动签到插件，复用 MP 已保存的站点 
 
 **猪猪 Piggo** `piggo.me`：新增默认“本地浏览器”模式，使用 MP `PlaywrightHelper.action()`，复用站点 Cookie、UA 和该站启用的代理。浏览器在 MP 运行环境发出请求；实际出口取决于 MP 部署及代理配置，不等同于必然是家庭网络。它不会使用或轮换 Browserless Token，也不会在失败后自动切换云端 IP。
 
+2.0.2 起，在打开站点前将账号 Cookie 写入浏览器 Cookie 存储，不再通过 MP 的固定 Cookie 请求头传入，让验证过程中新增的 Cookie 随后续请求正常发送。用户已在 Piggo 实测该方式签到成功。
+
 流程为打开 `/index.php` → 等待页面安全验证放行 → 检查是否已签到 → 按文字点击“签到” → 再次等待安全验证 → 依据明确成功文字确认。两次安全验证分别最多等待 40 秒；仅在能定位到 Cloudflare 验证复选框时尝试点击，不能保证所有挑战可自动通过。异地登录确认不会自动接受，验证未通过、Cookie 失效或本地浏览器能力不可用都会显示失败。按钮消失不会视为成功。
 
 新配置中的猪猪默认选择本地浏览器；若旧配置已显式保存为其他模式，需在该站点设置中改选“本地浏览器”。不安装额外浏览器或 Python OCR 依赖，直接使用 MP 现有能力。
 
-协议与处理思路参考 [qingyukb/PT站点签到](https://github.com/qingyukb/MoviePilot-Plugins/tree/3e2a0f719b793522dc710a38ff822b9bae676e45/plugins.v3/ptsitesignin) 的天空接口及 Piggo 本地浏览器预设，在本插件的每站点配置、MP OCR 与严格结果确认流程中实现；未在真实账号环境验证这些站点当前的协议。
+协议与处理思路参考 [qingyukb/PT站点签到](https://github.com/qingyukb/MoviePilot-Plugins/tree/3e2a0f719b793522dc710a38ff822b9bae676e45/plugins.v3/ptsitesignin) 的天空接口及 Piggo 本地浏览器预设，在本插件的每站点配置、MP OCR 与严格结果确认流程中实现；Piggo 的 Cookie 注入修复已经用户真实环境验证；天空接口尚未进行真实账号验证。
 
 ## Browserless 配置
 

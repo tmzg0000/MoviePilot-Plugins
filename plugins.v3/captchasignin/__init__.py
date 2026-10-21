@@ -30,7 +30,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "图片验证码优先 MP OCR，失败后 Browserless 兜底；农场仅直连签到。"
     plugin_icon = "signin.png"
-    plugin_version = "2.0.1"
+    plugin_version = "2.0.2"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"

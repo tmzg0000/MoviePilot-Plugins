@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from html.parser import HTMLParser
+from http.cookies import SimpleCookie
 import re
 import time
 import urllib.error
@@ -916,9 +917,23 @@ class LocalBrowserSigner:
         if not base or not cookie:
             return SignResult("failed", "站点地址或 Cookie 为空")
         target = target_url(base, str(rule["path"]))
+        try:
+            parsed_cookie = SimpleCookie()
+            parsed_cookie.load(cookie)
+            if not parsed_cookie:
+                raise ValueError("empty cookies")
+            origin = urllib.parse.urlsplit(base)
+            cookie_url = urllib.parse.urlunsplit((origin.scheme, origin.netloc, "/", "", ""))
+            browser_cookies = [{"name": name, "value": item.value, "url": cookie_url}
+                               for name, item in parsed_cookie.items()]
+        except Exception:
+            return SignResult("failed", "站点 Cookie 无法解析")
         budget = max(1, min(int(rule.get("challenge_wait") or 40), 60))
 
         def callback(page: Any) -> SignResult:
+            # Seed the browser jar before navigation, so challenge cookies can
+            # evolve normally instead of being masked by a fixed Cookie header.
+            page.context.add_cookies(browser_cookies)
             try:
                 page.goto(target, wait_until="domcontentloaded", timeout=30000)
             except Exception:
@@ -965,7 +980,7 @@ class LocalBrowserSigner:
                               else "本地浏览器点击后未确认签到成功")
 
         try:
-            result = action(url="about:blank", callback=callback, cookies=cookie,
+            result = action(url="about:blank", callback=callback, cookies=None,
                             ua=str(site.get("ua") or "").strip() or None,
                             proxies=self.proxies if site.get("proxy") else None,
                             headless=True, timeout=self.timeout)
