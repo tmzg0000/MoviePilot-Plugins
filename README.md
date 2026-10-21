@@ -50,3 +50,7 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
   - V2（1.1.7）：[`plugins.v2/limit`](plugins.v2/limit)，配置与日志单位统一为 `KiB/s`。
   - V3（1.1.7）：[`plugins.v3/limit`](plugins.v3/limit)，支持相同的限速与新增筛选功能。
   - 来源提交与许可证说明见插件目录中的 README 和 NOTICE。
+
+### [馒头保活助手（mtaliver）](plugins.v2/mtaliver)
+
+  基于 qingyukb 的 mteamalive 1.3.6 二开，支持 MoviePilot V2。首次手动填写邮箱验证码后保存浏览器会话，默认每天 01:35、09:35、21:35 检查并按间隔访问 M-Team，无需 TOTP 密钥；会话失效需重新验证。可用 API Key 核对最近动向，实际保号效果须部署后核对站点记录与规则。详见插件目录 README。
