@@ -109,6 +109,7 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "submit_selector": "a, button, input[type='submit'], [role='button']",
         "submit_text": "签到", "submit_method": "dom_click",
         "challenge_wait": 40, "wait": 15000,
+        "ad_selector": "#adtools a[href]",
         "already_keywords": ["今日已签到", "今天已签到", "已簽到"],
     },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
@@ -902,6 +903,29 @@ class LocalBrowserSigner:
             page.wait_for_timeout(1000)
         return html
 
+    def _open_ad(self, page: Any, result: SignResult, ad_url: str) -> SignResult:
+        """Open one Piggo reward link without altering the confirmed sign-in result."""
+        tab = None
+        detail = "广告链接未找到或不符合站内跳转规则"
+        if ad_url:
+            try:
+                tab = page.context.new_page()
+                response = tab.goto(ad_url, wait_until="domcontentloaded", timeout=15000)
+                tab.wait_for_timeout(2000)
+                if response is not None and response.status < 400 and not self._challenge(tab.content()):
+                    detail = "广告已打开，魔力到账未核实"
+                else:
+                    detail = "广告访问未确认完成，魔力到账未核实"
+            except Exception:
+                detail = "广告访问失败，魔力到账未核实"
+            finally:
+                if tab is not None:
+                    try:
+                        tab.close()
+                    except Exception:
+                        pass
+        return SignResult(result.status, result.message + "；" + detail)
+
     def sign(self, site: Mapping[str, Any], rule: Mapping[str, Any]) -> SignResult:
         action = self.action
         if action is None:
@@ -942,9 +966,22 @@ class LocalBrowserSigner:
             same_origin_url(target, str(page.url))
             if not before or self._challenge(before):
                 return SignResult("failed", "本地浏览器仍处于安全验证或异地登录确认页面")
+            ad_enabled = (urllib.parse.urlsplit(base).hostname == "piggo.me"
+                          and bool(rule.get("ad_selector")))
+            ad_url = ""
+            if ad_enabled:
+                try:
+                    # Read the current homepage slot before signing navigates away.
+                    href = page.locator(str(rule["ad_selector"])).first.get_attribute("href", timeout=1000)
+                    candidate = same_origin_url(target, href) if isinstance(href, str) and href else ""
+                    if urllib.parse.urlsplit(candidate).path == "/adredir.php":
+                        ad_url = candidate
+                except Exception:
+                    pass
             initial = classify(before, rule)
             if initial.status in {"success", "already"}:
-                return SignResult(initial.status, "本地浏览器：已确认今日签到")
+                confirmed = SignResult(initial.status, "本地浏览器：已确认今日签到")
+                return self._open_ad(page, confirmed, ad_url) if ad_enabled else confirmed
             if initial.message == "Cookie 无效或已过期":
                 return initial
             selector = str(rule.get("submit_selector") or "input[type='submit'], button")
@@ -976,8 +1013,9 @@ class LocalBrowserSigner:
             if not after or self._challenge(after):
                 return SignResult("failed", "签到后仍处于安全验证页面，未确认成功")
             result = classify(after, rule)
-            return SignResult(result.status, "本地浏览器：签到已确认" if result.status in {"success", "already"}
+            confirmed = SignResult(result.status, "本地浏览器：签到已确认" if result.status in {"success", "already"}
                               else "本地浏览器点击后未确认签到成功")
+            return self._open_ad(page, confirmed, ad_url) if ad_enabled and result.status in {"success", "already"} else confirmed
 
         try:
             result = action(url="about:blank", callback=callback, cookies=None,

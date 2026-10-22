@@ -110,6 +110,7 @@ class LocalBrowserTests(unittest.TestCase):
         self.rule.update(challenge_wait=2,wait=1000)
         self.page=Mock(url='https://piggo.me/index.php',frames=[])
         self.page.evaluate.return_value=True
+        self.page.locator.return_value.first.get_attribute.return_value=None
         self.proxy={'https':'http://local-proxy:8080'}
         self.action=Mock(side_effect=lambda **kw:kw['callback'](self.page))
         self.signer=core.LocalBrowserSigner(action=self.action,proxies=self.proxy)
@@ -156,6 +157,61 @@ class LocalBrowserTests(unittest.TestCase):
         self.page.content.return_value='今日已签到'
         self.assertIn(self.signer.sign(self.site,self.rule).status,{'success','already'})
         self.page.click.assert_not_called()
+
+    def test_ad_uses_current_link_and_shared_browser_after_signin(self):
+        for ad_id in (11,42):
+            with self.subTest(ad_id=ad_id):
+                self.setUp()
+                href=f'adredir.php?id={ad_id}&url=https%3A%2F%2Fshop.example%2Fnew'
+                self.page.locator.return_value.first.get_attribute.return_value=href
+                self.page.content.side_effect=['欢迎','签到成功']
+                tab=self.page.context.new_page.return_value
+                tab.goto.return_value=Mock(status=200)
+                tab.content.return_value='商品页面'
+                events=[]
+                self.page.click.side_effect=lambda *a,**k:events.append('sign')
+                tab.goto.side_effect=lambda *a,**k:events.append('ad') or Mock(status=200)
+                result=self.signer.sign(self.site,self.rule)
+                self.assertEqual(result.status,'success')
+                self.assertIn('广告已打开，魔力到账未核实',result.message)
+                self.assertEqual(events,['sign','ad'])
+                tab.goto.assert_called_once_with('https://piggo.me/'+href,wait_until='domcontentloaded',timeout=15000)
+                tab.close.assert_called_once()
+
+    def test_ad_failure_preserves_signin_success_and_closes_tab(self):
+        self.page.locator.return_value.first.get_attribute.return_value='/adredir.php?id=99'
+        self.page.content.return_value='今日已签到'
+        tab=self.page.context.new_page.return_value
+        tab.goto.side_effect=RuntimeError('private-url-token')
+        result=self.signer.sign(self.site,self.rule)
+        self.assertIn(result.status,{'already','success'})
+        self.assertIn('广告访问失败',result.message)
+        self.assertNotIn('private-url-token',result.message)
+        self.page.click.assert_not_called()
+        tab.close.assert_called_once()
+
+    def test_invalid_ad_targets_are_not_opened(self):
+        for href in (None,'https://other.example/adredir.php?id=1','javascript:alert(1)','/delete.php'):
+            with self.subTest(href=href):
+                self.page.locator.return_value.first.get_attribute.return_value=href
+                self.page.content.return_value='今日已签到'
+                self.signer.sign(self.site,self.rule)
+                self.page.context.new_page.assert_not_called()
+
+    def test_failed_signin_does_not_open_ad(self):
+        self.page.locator.return_value.first.get_attribute.return_value='/adredir.php?id=11'
+        self.page.content.side_effect=['欢迎','Just a moment...','Just a moment...']
+        self.assertEqual(self.signer.sign(self.site,self.rule).status,'failed')
+        self.page.context.new_page.assert_not_called()
+
+    def test_ad_challenge_does_not_claim_opened_or_rewarded(self):
+        self.page.locator.return_value.first.get_attribute.return_value='/adredir.php?id=11'
+        self.page.content.return_value='今日已签到'
+        tab=self.page.context.new_page.return_value
+        tab.goto.return_value=Mock(status=403)
+        result=self.signer.sign(self.site,self.rule)
+        self.assertIn('广告访问未确认完成',result.message)
+        self.assertNotIn('广告已打开',result.message)
 
     def test_challenges_before_and_after_click_must_clear(self):
         self.page.content.side_effect=['正在进行安全检测','欢迎','正在验证您是否是真人','签到成功']

@@ -47,6 +47,13 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(self.plugin._config()['site_ids'], [9])
         self.assertEqual(self.plugin._config()['site_9_token'], 1)
 
+    def test_results_show_ad_outcome_alongside_success(self):
+        self.plugin.get_data.return_value=[{'site':'猪猪','status':'success',
+            'message':'本地浏览器：签到已确认；广告已打开，魔力到账未核实'}]
+        import json
+        rendered=json.dumps(self.plugin.get_page(),ensure_ascii=False)
+        self.assertIn('签到成功；广告已打开，魔力到账未核实',rendered)
+
     def test_legacy_single_token_migration_is_preserved(self):
         self.plugin.init_plugin({'browserless_token':'legacy', 'site_ids':[9]})
         self.assertEqual(self.plugin._config()['browserless_tokens'], 'legacy')
@@ -196,7 +203,7 @@ class PluginTests(unittest.TestCase):
             plugin = module.CaptchaSignIn()
             plugin.init_plugin({'direct_site_ids':[9]})
             self.assertEqual(plugin._site_ids,[9])
-            self.assertEqual(plugin.plugin_version,'2.0.2')
+            self.assertEqual(plugin.plugin_version,'2.0.3')
 
 
 if __name__ == '__main__':

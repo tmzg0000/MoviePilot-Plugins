@@ -30,7 +30,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "图片验证码优先 MP OCR，失败后 Browserless 兜底；农场仅直连签到。"
     plugin_icon = "signin.png"
-    plugin_version = "2.0.2"
+    plugin_version = "2.0.3"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -269,6 +269,8 @@ class CaptchaSignIn(_PluginBase):
             site_name = str(row.get("site") or "未知站点")
             site_url = str(row.get("url") or "").strip()
             result = "签到成功" if row.get("status") in {"success", "already"} else str(row.get("message") or "-")
+            if row.get("status") in {"success", "already"} and "；广告" in str(row.get("message") or ""):
+                result += "；广告" + str(row["message"]).split("；广告", 1)[1]
             rows.append({"component": "tr", "content": [
                 {"component": "td", "content": [{"component": "a", "props": {"href": site_url, "target": "_blank", "rel": "noopener noreferrer", "class": "text-primary text-decoration-none"}, "text": site_name}]} if site_url else {"component": "td", "text": site_name},
                 {"component": "td", "content": [{"component": "VChip", "props": {"size": "x-small", "variant": "tonal", "color": meta["color"], "prepend-icon": meta["icon"]}, "text": meta["label"]}]},
