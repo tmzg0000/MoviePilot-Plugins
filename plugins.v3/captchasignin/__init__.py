@@ -5,7 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from threading import Lock
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import time
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -34,7 +34,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "密码解锁后启用；支持图片验证码、农场直连与彩虹岛加密题库签到。"
     plugin_icon = "signin.png"
-    plugin_version = "3.0.1"
+    plugin_version = "3.0.2"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -152,7 +152,7 @@ class CaptchaSignIn(_PluginBase):
         if not self.get_state():
             return []
         try:
-            trigger = CronTrigger.from_crontab(self._cron)
+            trigger = CronTrigger.from_crontab(self._cron, timezone=self._now().tzinfo)
         except ValueError:
             logger.error("验证码站点签到：Cron 表达式无效")
             return []
@@ -326,6 +326,35 @@ class CaptchaSignIn(_PluginBase):
             {"component": "div", "props": {"class": "text-caption text-medium-emphasis mt-1"}, "text": hint},
         ]}
 
+    @staticmethod
+    def _now() -> datetime:
+        from app.core.config import settings
+
+        name = getattr(settings, "TZ", None)
+        if name:
+            try:
+                return datetime.now(ZoneInfo(str(name)))
+            except (ZoneInfoNotFoundError, ValueError):
+                pass
+        return datetime.now().astimezone()
+
+    @staticmethod
+    def _record_day(record: Any, now: datetime) -> str:
+        if not isinstance(record, dict) or not isinstance(record.get("ran_at"), str):
+            return ""
+        try:
+            recorded = datetime.fromisoformat(record["ran_at"])
+        except ValueError:
+            return ""
+        if recorded.tzinfo is not None:
+            recorded = recorded.astimezone(now.tzinfo)
+        return recorded.strftime("%Y%m%d")
+
+    @classmethod
+    def _current_success(cls, record: Any, now: datetime) -> bool:
+        return (isinstance(record, dict) and record.get("status") in {"success", "already"}
+                and cls._record_day(record, now) == now.strftime("%Y%m%d"))
+
     def run_sign_in(self) -> None:
         if self._unlock_key is None:
             self._save_results([{"site": "配置", "status": "failed", "message": "请先输入有效的插件解锁密码"}])
@@ -335,15 +364,16 @@ class CaptchaSignIn(_PluginBase):
         if not selected:
             self._finish([{"site": "配置", "status": "failed", "message": "未选择可用的 MoviePilot 站点"}])
             return
-        today = datetime.now().strftime("%Y%m%d")
+        now = self._now()
+        today = now.strftime("%Y%m%d")
         daily_state = self.get_data("state_" + today) or {}
-        daily_state = daily_state if isinstance(daily_state, dict) else {}
+        daily_state = {key: value for key, value in daily_state.items() if self._current_success(value, now)} if isinstance(daily_state, dict) else {}
         if not daily_state:
             for result in self.get_data("history_" + today) or []:
                 if not isinstance(result, dict):
                     continue
                 state_key = str(result.get("state_key") or "id:" + str(result.get("site_id") or "").strip())
-                if result.get("status") in {"success", "already"} and state_key not in {"", "id:"}:
+                if self._current_success(result, now) and state_key not in {"", "id:"}:
                     daily_state[state_key] = result
         pending, results = [], []
         for site, token in selected:
@@ -353,7 +383,7 @@ class CaptchaSignIn(_PluginBase):
             else:
                 pending.append((site, token))
         if not pending:
-            logger.info("验证码站点签到：%s 个站点今日已成功，跳过网络签到", len(results))
+            logger.info("验证码站点签到：%s 个站点今日已成功，跳过网络签到（缓存日期 %s，时区 %s）", len(results), now.date(), now.tzinfo)
             self._finish(results)
             return
         try:
@@ -361,7 +391,7 @@ class CaptchaSignIn(_PluginBase):
         except ValueError as error:
             self._finish(results + [{"site": "配置", "status": "failed", "message": str(error)}])
             return
-        logger.info("验证码站点签到：%s 个站点今日已成功跳过，开始处理 %s 个站点", len(results), len(pending))
+        logger.info("验证码站点签到：%s 个站点今日已成功跳过，开始处理 %s 个站点（缓存日期 %s，时区 %s）", len(results), len(pending), now.date(), now.tzinfo)
         attempted = self._run_sites(pending, rules)
         result_by_site_id = {getattr(site, "id", None): result for (site, _token), result in zip(pending, attempted)}
         for attempt in range(1, self._retry_count + 1):
@@ -450,21 +480,24 @@ class CaptchaSignIn(_PluginBase):
             outcome = SignResult("failed", "签到执行出现未预期错误")
         logger.info("验证码站点签到：完成 %s（%s）", site_name, outcome.status)
         return {"site": site_name, "site_id": str(info.get("id") or ""), "state_key": site_state_key(info), "url": sign_url, "status": outcome.status, "message": outcome.message,
-                "ran_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                "ran_at": self._now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def _finish(self, results: List[Dict[str, str]]) -> None:
         self._save_results(results, notify=self._notify)
 
     def _save_results(self, results: List[Dict[str, str]], notify: bool = False) -> None:
-        ran_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        results = [dict(item, ran_at=item.get("ran_at") or ran_at) for item in results]
+        now = self._now()
+        ran_at = now.strftime("%Y-%m-%d %H:%M:%S")
+        # A historical success with no timestamp is not proof of signing today.
+        results = [dict(item, ran_at=item.get("ran_at") or
+                        ("" if item.get("status") in {"success", "already"} else ran_at)) for item in results]
         self.save_data("latest", results)
-        today = datetime.now().strftime("%Y%m%d")
+        today = now.strftime("%Y%m%d")
         # Old rows remain visible until refreshed, but cannot seed today's cache.
-        todays_results = [item for item in results if item["ran_at"][:10].replace("-", "") == today]
+        todays_results = [item for item in results if self._record_day(item, now) == today]
         self.save_data("history_" + today, todays_results)
         daily_state = self.get_data("state_" + today) or {}
-        daily_state = daily_state if isinstance(daily_state, dict) else {}
+        daily_state = {key: value for key, value in daily_state.items() if self._current_success(value, now)} if isinstance(daily_state, dict) else {}
         for result in todays_results:
             if not isinstance(result, dict):
                 continue

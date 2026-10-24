@@ -17,7 +17,7 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
 ### [验证码站点签到](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/captchasignin)
 
-  当前版本 3.0.1，整个插件需填写有效的解锁密码后启用。新增彩虹岛支持，内置 216 道已验证题目的加密资源，未命中时随机选择答案，只点“不会”，并以页面出现“今天已经签过到了”确认完成。密码和明文题库不随源码分发。
+  当前版本 3.0.2，整个插件需填写有效的解锁密码后启用。新增彩虹岛支持，内置 216 道已验证题目的加密资源，未命中时随机选择答案，只点“不会”，并以页面出现“今天已经签过到了”确认完成。密码和明文题库不随源码分发。
 
   支持 MoviePilot V2/V3，复用站点 Cookie。普通图片验证码优先调用 MP 系统配置的 OCR 服务（`OCR_HOST`），失败后使用对应站点的 Browserless Token 兜底，无需额外安装 OCR 模型。新增自由农场 `0ff.cc` / `pt.0ff.cc` 仅直连签到，失败直接报告，不调用 Browserless；保留 OpenCD 首页签到记录严格复查。
 
