@@ -73,12 +73,13 @@
     "name": "验证码站点签到",
     "description": "密码解锁后启用；支持图片验证码、农场直连与彩虹岛加密题库签到。",
     "labels": "站点,签到",
-    "version": "3.0.2",
+    "version": "3.0.3",
     "icon": "signin.png",
     "author": "tmzg0000",
     "level": 2,
     "system_version": ">=2.0.0,<3.0.0",
     "history": {
+      "v3.0.3": "插件解锁密码改为明文输入，并增加作者WX:nasplayer提示。",
       "v3.0.2": "修复主机与MP时区不同导致昨天成功记录被当作今日缓存；定时、结果时间及缓存按MP时区，严格复核记录日期并清理过期缓存。",
       "v3.0.1": "彩虹岛题库未命中时随机选择答案后点不会；仍严格回查今天已经签过到了，保留每日一次提交保护。",
       "v3.0.0": "新增整体密码解锁与彩虹岛加密题库；固定只点不会，并严格回查今天已经签过到了。",
@@ -215,6 +216,20 @@
       "v1.4.2": "验证码改用原生输入提交；一次性任务增加时区和错过执行宽限，结果页显示排队/执行状态，待验证不再标为失败。",
       "v1.4.1": "修复邮箱填写后未等待异步校验导致发送按钮误报不存在，区分按钮缺失与校验/冷却状态。",
       "v1.4.0": "基于 qingyukb 1.3.6 二开：邮箱验证码登录、持久化会话、每日访问和失效提醒，移除 TOTP。"
+    }
+  },
+  "TrackerEditor": {
+    "name": "Tracker替换",
+    "description": "批量替换 qBittorrent、Transmission 已有种子的 Tracker 文本。",
+    "labels": "下载管理,Tracker",
+    "version": "2.0.0",
+    "icon": "https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png",
+    "author": "tmzg0000",
+    "level": 1,
+    "system_version": ">=2.0.0,<3.0.0",
+    "history": {
+      "v2.0.0": "适配 MoviePilot V2/V3；原生客户端避免修改全局设置，修复定时配置保存与计数，保留 Transmission 分组并增加结果页。",
+      "v1.9": "上游 honue：修复 Tracker 替换计数问题。"
     }
   }
 }

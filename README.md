@@ -8,6 +8,14 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
   - V2：[`plugins.v2/qcwautopark`](plugins.v2/qcwautopark)
   - V3：[`plugins.v3/qcwautopark`](plugins.v3/qcwautopark)
 
+### [Tracker替换](plugins.v3/trackereditor)
+
+  从官方仓库 honue 的 TrackerEditor 1.9 适配，V2/V3 均发布 **2.0.0**。支持 qBittorrent、Transmission 4.0+，按 `旧文本|新文本` 批量替换已有种子的 Tracker；支持立即执行、Cron 定时和通知，保留 Transmission 分组，分别统计修改种子与 Tracker 数量。使用原生客户端，仅修改匹配的 Tracker；扫描所连接下载器的所有种子，建议先验证规则。
+
+  - V2：[`plugins.v2/trackereditor`](plugins.v2/trackereditor)
+  - V3：[`plugins.v3/trackereditor`](plugins.v3/trackereditor)
+  - 来源、许可证与配置说明见插件目录中的 README 和 NOTICE。
+
 ### [媒体库封面生成](https://github.com/justzerock/MoviePilot-Plugins/tree/main/plugins.v2/mediacovergenerator)
   > 参考项目：https://github.com/HappyQuQu/jellyfin-library-poster
 
@@ -17,7 +25,7 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
 ### [验证码站点签到](https://github.com/tmzg0000/MoviePilot-Plugins/tree/main/plugins.v3/captchasignin)
 
-  当前版本 3.0.2，整个插件需填写有效的解锁密码后启用。新增彩虹岛支持，内置 216 道已验证题目的加密资源，未命中时随机选择答案，只点“不会”，并以页面出现“今天已经签过到了”确认完成。密码和明文题库不随源码分发。
+  当前版本 3.0.3，整个插件需填写有效的解锁密码后启用。新增彩虹岛支持，内置 216 道已验证题目的加密资源，未命中时随机选择答案，只点“不会”，并以页面出现“今天已经签过到了”确认完成。密码和明文题库不随源码分发。
 
   支持 MoviePilot V2/V3，复用站点 Cookie。普通图片验证码优先调用 MP 系统配置的 OCR 服务（`OCR_HOST`），失败后使用对应站点的 Browserless Token 兜底，无需额外安装 OCR 模型。新增自由农场 `0ff.cc` / `pt.0ff.cc` 仅直连签到，失败直接报告，不调用 Browserless；保留 OpenCD 首页签到记录严格复查。
 

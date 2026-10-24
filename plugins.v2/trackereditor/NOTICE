@@ -1,0 +1,21 @@
+Tracker替换 / TrackerEditor
+Original author: honue
+Original repository: https://github.com/jxxghp/MoviePilot-Plugins
+Original path: plugins/trackereditor/__init__.py
+Imported source commit: 60703480d35b99ad54088899e53b6cc3213d867a
+Original version: 1.9
+Tracker icon copied from the upstream icons/trackereditor_A.png.
+Original author URL: https://github.com/honue
+
+Adapted by tmzg0000 on 2026-10-24, version 2.0.0:
+Publish self-contained MoviePilot V2 and V3 versions with matching market indexes.
+Retain the plugin identity, connection settings and literal replacement syntax.
+Use SDK plugin/config/logging/scheduling/message contracts on V3.
+Use native downloader clients to avoid global preference changes on connection.
+Fix historical schedule config spelling, validate rules before connecting,
+apply the first matching rule once, preserve Transmission tracker tiers,
+handle per-torrent errors and count torrents separately from tracker edits.
+Add a recent execution summary and keep credentials/URLs out of plugin logs.
+
+Current maintainer and plugin author field: tmzg0000.
+The upstream GNU GPL v3 license is reproduced in the repository root LICENSE.

@@ -34,7 +34,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "密码解锁后启用；支持图片验证码、农场直连与彩虹岛加密题库签到。"
     plugin_icon = "signin.png"
-    plugin_version = "3.0.2"
+    plugin_version = "3.0.3"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -177,8 +177,8 @@ class CaptchaSignIn(_PluginBase):
                 for item in fields]}
 
         content = [
-            row(field("VTextField", "activation_password", "插件解锁密码", type="password", autocomplete="off",
-                      hint="填写有效密码后才能启用插件或立即执行。", **{"persistent-hint": True})),
+            row(field("VTextField", "activation_password", "插件解锁密码", type="text", autocomplete="off",
+                      hint="作者WX:nasplayer；填写有效密码后才能启用插件或立即执行。", **{"persistent-hint": True})),
             row(field("VSwitch", "enabled", "启用插件"), field("VSwitch", "notify", "签到后发送通知"),
                 field("VSwitch", "run_once", "保存后立即执行一次")),
             row(field("VCronField", "cron", "执行周期", placeholder="15 8 * * *"),
