@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import signal
+import subprocess
+import sys
 from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 import re
@@ -16,10 +20,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
 DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
+    "ptchdbits.co": {"mode": "chd", "path": "/bakatest.php", "submit_text": "不会",
+                      "already_keywords": ["今天已经签过到了"], "strict_status_keywords": True},
     "0ff.cc": {"mode": "farm", "path": "/attendance.php"},
     "pt.0ff.cc": {"mode": "farm", "path": "/attendance.php"},
     "open.cd": {
@@ -178,6 +186,10 @@ def resolve_rule(site: Mapping[str, Any], custom_rules: Mapping[str, Mapping[str
     if preset is None and host.endswith(".open.cd"):
         preset = DEFAULT_RULES["open.cd"]
     rule = dict(preset or {})
+    # CHDBits must always use its bank and native skip action. Generic overrides
+    # must never turn this into a normal submit or a Browserless request.
+    if host == "ptchdbits.co":
+        return validate_rule(rule)
     rule.update(custom)
     # 1.0.13 exposed dom_click for LuckPT.  Its reward handler always opens a
     # confirmation dialog, so migrate saved rules to the complete action.
@@ -236,8 +248,8 @@ def apply_site_options(site: Mapping[str, Any], rule: Mapping[str, Any], options
 def validate_rule(rule: Mapping[str, Any]) -> Dict[str, Any]:
     result = dict(rule)
     mode = result.get("mode")
-    if mode not in {"open_page", "cloudflare", "image", "trigger_image", "altcha", "farm", "local_browser"}:
-        raise ValueError("签到方式必须为 open_page、cloudflare、image、trigger_image、altcha、farm 或 local_browser")
+    if mode not in {"open_page", "cloudflare", "image", "trigger_image", "altcha", "farm", "local_browser", "chd"}:
+        raise ValueError("签到方式必须为 open_page、cloudflare、image、trigger_image、altcha、farm、local_browser 或 chd")
     path = str(result.get("path") or "")
     if not path.startswith("/") or path.startswith("//") or "\\" in path or "#" in path:
         raise ValueError("签到路径必须是以 / 开头的站内路径")
@@ -264,6 +276,9 @@ def target_url(base_url: str, path: str, route_fragment: Optional[str] = None) -
 
 def site_state_key(site: Mapping[str, Any]) -> str:
     site_id = str(site.get("id") or "").strip()
+    if normalize_host(str(site.get("url") or "")) == "ptchdbits.co":
+        day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        return ("id:" + site_id if site_id else "host:ptchdbits.co") + ":chd:" + day
     if site_id:
         return "id:" + site_id
     host = urllib.parse.urlparse(str(site.get("url") or "")).hostname
@@ -837,12 +852,15 @@ class HttpSigner:
 
 
 class HybridSigner:
-    def __init__(self, direct: HttpSigner, browserless_factory: Any, local: Any = None):
+    def __init__(self, direct: HttpSigner, browserless_factory: Any, local: Any = None, chd: Any = None):
         self.direct = direct
         self.browserless_factory = browserless_factory
         self.local = local
+        self.chd = chd
 
     def sign(self, site: Mapping[str, Any], rule: Mapping[str, Any]) -> SignResult:
+        if rule.get("mode") == "chd":
+            return self.chd.sign(site, rule) if self.chd else SignResult("failed", "彩虹岛题库签到未解锁")
         if rule.get("mode") == "local_browser":
             local = self.local or LocalBrowserSigner()
             return local.sign(site, rule)
@@ -862,12 +880,14 @@ class HybridSigner:
 
 
 class LocalBrowserSigner:
-    """Use MP's browser helper at the configured local network exit, never cloud fallback."""
+    """Run MP's installed CloakBrowser in a disposable process at the local exit."""
 
-    def __init__(self, action: Any = None, proxies: Optional[dict] = None, timeout: int = 90):
+    def __init__(self, action: Any = None, proxies: Optional[dict] = None, timeout: int = 180,
+                 progress: Any = None):
         self.action = action
         self.proxies = proxies
         self.timeout = timeout
+        self.progress = progress
 
     @staticmethod
     def _challenge(html: str) -> bool:
@@ -905,10 +925,12 @@ class LocalBrowserSigner:
 
     def _open_ad(self, page: Any, result: SignResult, ad_url: str) -> SignResult:
         """Open one Piggo reward link without altering the confirmed sign-in result."""
+        self._report("签到已确认", result)
         tab = None
         detail = "广告链接未找到或不符合站内跳转规则"
         if ad_url:
             try:
+                self._report("开始广告访问", result)
                 tab = page.context.new_page()
                 response = tab.goto(ad_url, wait_until="domcontentloaded", timeout=15000)
                 tab.wait_for_timeout(2000)
@@ -921,6 +943,7 @@ class LocalBrowserSigner:
             finally:
                 if tab is not None:
                     try:
+                        self._report("关闭广告页面", result)
                         tab.close()
                     except Exception:
                         pass
@@ -930,12 +953,12 @@ class LocalBrowserSigner:
         action = self.action
         if action is None:
             try:
-                from app.helper.browser import PlaywrightHelper
-                action = getattr(PlaywrightHelper(), "action", None)
+                from app.core.config import settings
+                options = {"humanize": getattr(settings, "CLOAKBROWSER_HUMANIZE", False),
+                           "human_preset": getattr(settings, "CLOAKBROWSER_HUMAN_PRESET", "default")}
             except Exception:
-                action = None
-        if not callable(action):
-            return SignResult("failed", "MP 本地浏览器接口不可用；未转交云端 Browserless")
+                return SignResult("failed", "MP 本地浏览器接口不可用；未转交云端 Browserless")
+            return self._sign_isolated(site, rule, options)
         base = str(site.get("url") or "")
         cookie = str(site.get("cookie") or "").strip()
         if not base or not cookie:
@@ -1025,3 +1048,152 @@ class LocalBrowserSigner:
             return result if isinstance(result, SignResult) else SignResult("failed", "本地浏览器未返回有效签到结果")
         except Exception:
             return SignResult("failed", "MP 本地浏览器运行失败；未转交云端 Browserless")
+
+    def _report(self, stage: str, result: Optional[SignResult] = None) -> None:
+        if self.progress:
+            self.progress(stage, result)
+
+    @staticmethod
+    def _kill_browser_process(process: Any) -> None:
+        # Chromium may create its own session. Snapshot the owned descendants
+        # before killing the worker, otherwise they can be reparented to init.
+        descendants = []
+        pending = [process.pid]
+        while pending and os.path.isdir("/proc"):
+            parent = pending.pop()
+            try:
+                children = set()
+                for tid in os.listdir("/proc/%s/task" % parent):
+                    try:
+                        with open("/proc/%s/task/%s/children" % (parent, tid)) as stream:
+                            children.update(int(value) for value in stream.read().split())
+                    except OSError:
+                        continue
+                descendants.extend(children)
+                pending.extend(children)
+            except (OSError, ValueError):
+                pass
+        # Every invocation owns a separate session. Never kill shared MP browsers.
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL)
+            elif process.poll() is None:
+                process.kill()
+        except ProcessLookupError:
+            pass
+        for pid in reversed(descendants):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def _sign_isolated(self, site: Mapping[str, Any], rule: Mapping[str, Any],
+                       options: Mapping[str, Any]) -> SignResult:
+        payload = json.dumps({"site": dict(site), "rule": dict(rule), "options": dict(options),
+                              "proxies": self.proxies if site.get("proxy") else None})
+        process = None
+        output = ""
+        timed_out = False
+        try:
+            # Execute a clean interpreter; forking a threaded MP process would
+            # inherit Playwright event loops and locks. Credentials travel on stdin.
+            env = os.environ.copy()
+            # MP can extend sys.path to its venv at startup. Carry that search
+            # path into the clean interpreter without booting the whole app.
+            env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(
+                [path for path in sys.path if path] + env.get("PYTHONPATH", "").split(os.pathsep)))
+            process = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--local-browser-worker"],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                       stderr=subprocess.DEVNULL, text=True,
+                                       start_new_session=(os.name == "posix"), env=env)
+            try:
+                output, _ = process.communicate(payload, timeout=self.timeout)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                self._kill_browser_process(process)
+                output, _ = process.communicate(timeout=3)
+        except Exception:
+            return SignResult("failed", "本地浏览器进程运行失败；未转交云端 Browserless")
+        finally:
+            if process is not None:
+                self._kill_browser_process(process)
+                if process.poll() is None:
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass
+                for stream in (process.stdin, process.stdout):
+                    if stream is not None:
+                        stream.close()
+        confirmed = None
+        completed = None
+        stage = "启动浏览器"
+        for line in output.splitlines():
+            if not line.startswith("CAPTCHA_BROWSER:"):
+                continue
+            try:
+                event = json.loads(line[len("CAPTCHA_BROWSER:"):])
+                stage = event["stage"]
+                value = event.get("result")
+                result = SignResult(value["status"], value["message"]) if value else None
+                if result and result.status in {"success", "already"}:
+                    confirmed = result
+                if stage == "完成":
+                    completed = result
+                self._report(stage, result)
+            except (ValueError, KeyError, TypeError):
+                continue
+        if timed_out:
+            message = "本地浏览器整体超时（%s），已终止本次浏览器进程" % stage
+            if confirmed:
+                return SignResult(confirmed.status, confirmed.message + "；" + message + "；魔力到账未核实")
+            return SignResult("failed", message + "；签到结果未确认")
+        if completed and (completed.status in {"success", "already"} or not confirmed):
+            return completed
+        if confirmed:
+            return SignResult(confirmed.status, confirmed.message + "；浏览器异常退出，魔力到账未核实")
+        return SignResult("failed", "本地浏览器未返回有效签到结果；未转交云端 Browserless")
+
+
+def _local_browser_worker() -> None:
+    """Disposable browser owner, supervised by the parent wall-clock deadline."""
+    payload = json.load(sys.stdin)
+
+    def report(stage: str, result: Optional[SignResult] = None) -> None:
+        event = {"stage": stage, "result": {"status": result.status, "message": result.message} if result else None}
+        print("CAPTCHA_BROWSER:" + json.dumps(event, ensure_ascii=False), flush=True)
+
+    def action(**kwargs: Any) -> SignResult:
+        from cloakbrowser import launch_context
+        context = page = None
+        result = None
+        try:
+            report("启动浏览器")
+            context = launch_context(headless=True, proxy=payload.get("proxies"),
+                                     user_agent=kwargs.get("ua"), **payload["options"])
+            report("打开签到页面")
+            page = context.new_page()
+            page.set_default_timeout(15000)
+            result = kwargs["callback"](page)
+            report("签到及广告处理结束", result)
+            return result
+        finally:
+            # A failure closing one page must not skip context cleanup.
+            try:
+                if page is not None:
+                    report("关闭签到页面", result)
+                    page.close()
+            except Exception:
+                pass
+            finally:
+                if context is not None:
+                    report("关闭浏览器上下文", result)
+                    context.close()
+
+    signer = LocalBrowserSigner(action=action, proxies=payload.get("proxies"), progress=report)
+    result = signer.sign(payload["site"], payload["rule"])
+    report("完成", result)
+
+
+if __name__ == "__main__" and "--local-browser-worker" in sys.argv:
+    _local_browser_worker()

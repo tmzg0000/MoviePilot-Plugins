@@ -221,3 +221,21 @@ plugins.v2/mediacovergenerator/template_renderer.py
 
 # Local scripts
 /大佬脚本/
+
+# Development-only files stay on this machine, including nested test suites.
+tests/
+/tools/
+/plans/
+
+# Archived cover templates; the active templates live directly in style/.
+/plugins.v2/yahahacoverstudio/style/legacy_presets_20260430/
+/plugins.v2/yahahacoverstudio/style/preset_backup_20260506/
+
+# CHDBits plaintext banks and captured account pages stay local.
+/plugins.v2/chdsignin/
+/plugins.v3/chdsignin/
+/plugins.v2/chdsignin/answers.json
+/plugins.v3/chdsignin/answers.json
+/tools/chd_question_bank/sample*.html
+/tools/chd_question_bank/questions*.json
+/tools/chd_question_bank/*bank*.sqlite3*

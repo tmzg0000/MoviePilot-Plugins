@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from threading import Lock
+from zoneinfo import ZoneInfo
 import time
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,13 +26,15 @@ except ImportError:  # MoviePilot V2
 from app.schemas import NotificationType
 
 from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, HttpSigner, HybridSigner, LocalBrowserSigner, SignResult, parse_rules, resolve_rule, site_state_key, target_url
+from .chd import ChdSigner
+from .vault import unlock
 
 
 class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
-    plugin_desc = "图片验证码优先 MP OCR，失败后 Browserless 兜底；农场仅直连签到。"
+    plugin_desc = "密码解锁后启用；支持图片验证码、农场直连与彩虹岛加密题库签到。"
     plugin_icon = "signin.png"
-    plugin_version = "2.0.3"
+    plugin_version = "3.0.0"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -39,6 +43,9 @@ class CaptchaSignIn(_PluginBase):
     token_group_slots = 5
 
     _enabled = False
+    _activation_password = ""
+    _unlock_key = None
+    _chd_lock = Lock()
     _notify = True
     _cron = "15 8 * * *"
     _site_ids: List[int] = []
@@ -54,7 +61,11 @@ class CaptchaSignIn(_PluginBase):
 
     def init_plugin(self, config: Optional[dict] = None) -> None:
         config = config or {}
-        self._enabled = bool(config.get("enabled", False))
+        self._activation_password = str(config.get("activation_password") or "")
+        self._unlock_key = unlock(self._activation_password)
+        self._enabled = bool(config.get("enabled", False)) and self._unlock_key is not None
+        if (config.get("enabled") or config.get("run_once")) and self._unlock_key is None:
+            logger.warning("验证码站点签到：未填写有效解锁密码，插件保持关闭")
         self._notify = bool(config.get("notify", True))
         self._cron = str(config.get("cron") or "15 8 * * *")
         groups = []
@@ -100,6 +111,7 @@ class CaptchaSignIn(_PluginBase):
 
     def _config(self) -> Dict[str, Any]:
         return {"config_layout": "site", "config_version": self.plugin_version, "enabled": self._enabled, "notify": self._notify, "cron": self._cron,
+                "activation_password": self._activation_password,
                 "site_ids": self._site_ids, "concurrency": self._concurrency,
                 "retry_delay_minutes": self._retry_delay_minutes, "retry_count": self._retry_count,
                 "browserless_url": self._browserless_url, "browserless_tokens": self._browserless_tokens,
@@ -127,7 +139,7 @@ class CaptchaSignIn(_PluginBase):
         return groups
 
     def get_state(self) -> bool:
-        return self._enabled
+        return self._enabled and self._unlock_key is not None
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -137,7 +149,7 @@ class CaptchaSignIn(_PluginBase):
         return []
 
     def get_service(self) -> List[Dict[str, Any]]:
-        if not self._enabled:
+        if not self.get_state():
             return []
         try:
             trigger = CronTrigger.from_crontab(self._cron)
@@ -165,6 +177,8 @@ class CaptchaSignIn(_PluginBase):
                 for item in fields]}
 
         content = [
+            row(field("VTextField", "activation_password", "插件解锁密码", type="password", autocomplete="off",
+                      hint="填写有效密码后才能启用插件或立即执行。", **{"persistent-hint": True})),
             row(field("VSwitch", "enabled", "启用插件"), field("VSwitch", "notify", "签到后发送通知"),
                 field("VSwitch", "run_once", "保存后立即执行一次")),
             row(field("VCronField", "cron", "执行周期", placeholder="15 8 * * *"),
@@ -186,7 +200,7 @@ class CaptchaSignIn(_PluginBase):
             row(field("VSelect", "site_ids", "签到站点", items=options, multiple=True, chips=True,
                       hint="选择后自动显示下方对应站点的设置；仅显示已保存 Cookie 的站点。", **{"persistent-hint": True})),
             {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact",
-             "text": "图片验证码优先使用 MP 系统 OCR，失败后 Browserless 兜底；天空支持专用 HTTP/OCR。农场仅直连；猪猪默认使用 MP 本地浏览器，不转交云端。按钮与成功确认选择默认时沿用内置或高级规则。"}},
+             "text": "图片验证码优先使用 MP 系统 OCR，失败后 Browserless 兜底；天空支持专用 HTTP/OCR。农场仅直连；猪猪默认使用 MP 本地浏览器。彩虹岛固定使用加密题库、只点不会，以今天已经签过到了确认完成。"}},
             {"component": "VCardTitle", "text": "站点设置列表"},
             {"component": "VAlert", "props": {"type": "info", "variant": "tonal",
              "show": "{{ !(site_ids || []).length }}", "text": "请先在上方选择签到站点。"}},
@@ -199,6 +213,7 @@ class CaptchaSignIn(_PluginBase):
             {"title": "弹窗验证码", "value": "trigger_image"},
             {"title": "Altcha 验证", "value": "altcha"},
             {"title": "农场直连", "value": "farm"},
+            {"title": "彩虹岛题库", "value": "chd"},
             {"title": "本地浏览器", "value": "local_browser"},
         ]
         choice_items = [{"title": "默认", "value": "default"}, {"title": "自定义", "value": "custom"}]
@@ -211,28 +226,33 @@ class CaptchaSignIn(_PluginBase):
             except ValueError:
                 rule = {"mode": "open_page"}
             farm = rule["mode"] == "farm"
+            chd = rule["mode"] == "chd"
+            fixed = farm or chd
             for suffix, value in {"mode": rule["mode"], "token": 0, "button_source": "default", "button_text": "",
                                   "success_source": "default", "success_text": ""}.items():
                 defaults.setdefault(prefix + suffix, value)
-            if farm:
-                defaults[prefix + "mode"] = "farm"
+            if fixed:
+                defaults[prefix + "mode"] = rule["mode"]
                 defaults[prefix + "token"] = 0
+            if chd:
+                defaults[prefix + "button_source"] = "default"
+                defaults[prefix + "success_source"] = "default"
             compact = {"density": "compact", "variant": "outlined", "hide-details": True}
             main_row = {"component": "VRow", "props": {"dense": True, "align": "center"}, "content": [
                 {"component": "VCol", "props": {"cols": 12, "md": 2}, "content": [
                     {"component": "div", "props": {"class": "text-body-2 font-weight-medium text-truncate", "title": str(site.name)}, "text": str(site.name)}]},
                 {"component": "VCol", "props": {"cols": 6, "md": 3}, "content": [
-                    field("VSelect", prefix + "mode", "模式", items=mode_items, disabled=farm, **compact)]},
+                    field("VSelect", prefix + "mode", "模式", items=mode_items, disabled=fixed, **compact)]},
                 {"component": "VCol", "props": {"cols": 6, "md": 2}, "content": [
                     field("VSelect", prefix + "token", "Token", items=token_items,
-                          disabled="{{ ['farm', 'local_browser'].includes(%smode) }}" % prefix, **compact)]},
+                          disabled="{{ ['farm', 'local_browser', 'chd'].includes(%smode) }}" % prefix, **compact)]},
                 {"component": "VCol", "props": {"cols": 6, "md": 2}, "content": [
-                    field("VSelect", prefix + "button_source", "按钮文字", items=choice_items, disabled=farm, **compact)]},
+                    field("VSelect", prefix + "button_source", "按钮文字", items=[{"title": "不会", "value": "default"}] if chd else choice_items, disabled=fixed, **compact)]},
                 {"component": "VCol", "props": {"cols": 6, "md": 3}, "content": [
-                    field("VSelect", prefix + "success_source", "成功文字确认", items=choice_items, **compact)]},
+                    field("VSelect", prefix + "success_source", "成功文字确认", items=[{"title": "今天已经签过到了", "value": "default"}] if chd else choice_items, disabled=chd, **compact)]},
             ]}
             details = []
-            if not farm:
+            if not fixed:
                 details.append({"component": "VRow", "props": {"dense": True, "show": "{{ %sbutton_source === 'custom' }}" % prefix},
                     "content": [{"component": "VCol", "props": {"cols": 12}, "content": [
                         field("VTextField", prefix + "button_text", "自定义按钮文字", placeholder="例如：立即签到", **compact)]}]})
@@ -307,6 +327,9 @@ class CaptchaSignIn(_PluginBase):
         ]}
 
     def run_sign_in(self) -> None:
+        if self._unlock_key is None:
+            self._save_results([{"site": "配置", "status": "failed", "message": "请先输入有效的插件解锁密码"}])
+            return
         all_sites = {site.id: site for site in SiteOper().list_order_by_pri()}
         selected = [(all_sites[site_id], self._site_tokens.get(site_id, "")) for site_id in self._site_ids if site_id in all_sites]
         if not selected:
@@ -353,15 +376,48 @@ class CaptchaSignIn(_PluginBase):
         self._finish(results)
 
     def _run_sites(self, sites: List[Tuple[Any, str]], rules: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]:
+        results = [None] * len(sites)
         with ThreadPoolExecutor(max_workers=min(self._concurrency, len(sites))) as executor:
-            return list(executor.map(lambda item: self._sign_one(item[0], rules, self._make_signer(item[1])), sites))
+            futures = {executor.submit(self._sign_one, site, rules, self._make_signer(token)): index
+                       for index, (site, token) in enumerate(sites)}
+            for future in as_completed(futures):
+                result = future.result()
+                results[futures[future]] = result
+                # Persist in the coordinator thread as each site completes, even
+                # while another browser is waiting or a later retry is sleeping.
+                self._save_progress(result)
+        return results
+
+    def _save_progress(self, result: Dict[str, str]) -> None:
+        latest = self.get_data("latest") or []
+        selected = {str(site_id) for site_id in self._site_ids}
+        latest = [item for item in latest if isinstance(item, dict)
+                  and str(item.get("site_id")) in selected
+                  and str(item.get("site_id")) != result.get("site_id")]
+        self._save_results(latest + [result])
 
     def _make_signer(self, token: str) -> HybridSigner:
         from app.core.config import settings
         direct = HttpSigner(self._recognize_captcha, proxies=getattr(settings, "PROXY", None))
-        local = LocalBrowserSigner(proxies=getattr(settings, "PROXY", None))
+        local = LocalBrowserSigner(proxies=getattr(settings, "PROXY", None),
+                                   progress=lambda stage, result: logger.info("验证码站点签到：本地浏览器阶段 %s", stage))
         return HybridSigner(direct, lambda: BrowserlessSigner(self._browserless_url, token)
-                            if token and self._browserless_url else None, local=local)
+                            if token and self._browserless_url else None, local=local,
+                            chd=ChdSigner(direct, self._unlock_key, self._reserve_chd))
+
+    def _reserve_chd(self, site: Dict[str, Any]) -> bool:
+        # Persist before sending, and serialize overlapping scheduled/manual jobs.
+        day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        key = site_state_key(site)
+        with self._chd_lock:
+            attempts = self.get_data("chd_attempts") or {}
+            if attempts.get(key) == day:
+                return False
+            # Keep one day per account, rather than accumulating a key per day.
+            attempts = {k: v for k, v in attempts.items() if v == day}
+            attempts[key] = day
+            self.save_data("chd_attempts", attempts)
+        return True
 
     @staticmethod
     def _recognize_captcha(image_b64: str) -> str:
@@ -397,21 +453,26 @@ class CaptchaSignIn(_PluginBase):
                 "ran_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def _finish(self, results: List[Dict[str, str]]) -> None:
+        self._save_results(results, notify=self._notify)
+
+    def _save_results(self, results: List[Dict[str, str]], notify: bool = False) -> None:
         ran_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         results = [dict(item, ran_at=item.get("ran_at") or ran_at) for item in results]
         self.save_data("latest", results)
         today = datetime.now().strftime("%Y%m%d")
-        self.save_data("history_" + today, results)
+        # Old rows remain visible until refreshed, but cannot seed today's cache.
+        todays_results = [item for item in results if item["ran_at"][:10].replace("-", "") == today]
+        self.save_data("history_" + today, todays_results)
         daily_state = self.get_data("state_" + today) or {}
         daily_state = daily_state if isinstance(daily_state, dict) else {}
-        for result in results:
+        for result in todays_results:
             if not isinstance(result, dict):
                 continue
             state_key = str(result.get("state_key") or "id:" + str(result.get("site_id") or "").strip())
             if result.get("status") in {"success", "already"} and state_key not in {"", "id:"}:
                 daily_state[state_key] = result
         self.save_data("state_" + today, daily_state)
-        if self._notify:
+        if notify:
             summary = "\n".join("%s：%s - %s" % (item["site"], item["status"], item["message"]) for item in results)
             self.post_message(mtype=NotificationType.SiteMessage, title="验证码站点签到", text=summary)
 
