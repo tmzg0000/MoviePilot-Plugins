@@ -34,7 +34,7 @@ class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "密码解锁后启用；支持图片验证码、农场直连与彩虹岛加密题库签到。"
     plugin_icon = "signin.png"
-    plugin_version = "3.0.0"
+    plugin_version = "3.0.1"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"

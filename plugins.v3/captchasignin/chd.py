@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 import unicodedata
 from html.parser import HTMLParser
@@ -153,13 +154,23 @@ class ChdSigner:
                 saved = read_bank(self.key).get(question["signature"], {})
                 correct = saved.get("correct")
                 by_text = {option["text"]: option["value"] for option in question["options"]}
-                if (saved.get("id") != question["id"] or not isinstance(correct, list) or not correct
+                missed = (saved.get("id") != question["id"] or not isinstance(correct, list) or not correct
                         or len(set(correct)) != len(correct) or not all(text in by_text for text in correct)
-                        or (question["kind"] == "radio" and len(correct) != 1)):
-                    return SignResult("failed", "彩虹岛：题库未命中有效答案，本次未提交")
+                        or (question["kind"] == "radio" and len(correct) != 1))
+                if missed:
+                    values = list(by_text.values())
+                    if question["kind"] == "radio":
+                        answer = [random.choice(values)]
+                    else:
+                        # Each nonempty checkbox combination has equal probability.
+                        mask = random.randrange(1, 1 << len(values))
+                        answer = [value for index, value in enumerate(values) if mask & (1 << index)]
+                else:
+                    answer = [by_text[text] for text in correct]
+                source = "题库未命中，随机选择" if missed else "题库匹配"
                 reserved = {"choice[]", "submit", "wantchange", "wantskip", "usercomment"}
                 fields = [(k, v) for k, v in question["hidden"] if k not in reserved]
-                fields += [("choice[]", by_text[text]) for text in correct]
+                fields += [("choice[]", value) for value in answer]
                 fields += [("usercomment", "此刻心情:无"), ("wantskip", "不会")]
                 if not self.reserve(site):
                     return SignResult("failed", "彩虹岛：北京时间今天已发起过提交，仅回查未确认签到；不重复提交")
@@ -171,8 +182,8 @@ class ChdSigner:
                     pass
                 checked = self._read(session, "GET", target)
                 if is_signed(checked):
-                    return SignResult("success", "彩虹岛：不会签到完成，页面确认今天已经签过到了")
-                return SignResult("failed", "彩虹岛：已点不会，页面未出现今天已经签过到了；本日不再提交")
+                    return SignResult("success", "彩虹岛：" + source + "后点不会，页面确认今天已经签过到了")
+                return SignResult("failed", "彩虹岛：" + source + "后已点不会，页面未出现今天已经签过到了；本日不再提交")
         except SigninError as error:
             return SignResult("failed", "彩虹岛：" + str(error))
         except ImportError:
