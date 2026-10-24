@@ -1,6 +1,14 @@
 # MoviePilot-Plugins
 MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
+### [刷下载](plugins.v3/downloadbooster)
+
+支持 MoviePilot V2/V3，单选 MP 中的 qBittorrent / Transmission 下载器，多下载器使用插件分身。目录中的多个种子同时添加，默认累计目标 100 GiB、标签“刷下载”、下载完成后保留做种 15 分钟、确认删除任务及数据后间隔 15 分钟重加，每 10 分钟检查。默认达标后让现有任务完成下载、做种并清理，也可选择立即清理；支持持久化进度和重置统计，只管理自身添加且身份匹配的任务。
+
+- V2：[`plugins.v2/downloadbooster`](plugins.v2/downloadbooster)
+- V3：[`plugins.v3/downloadbooster`](plugins.v3/downloadbooster)
+- 必填 MP 容器内种子目录、下载器内数据保存目录。详细行为及统计边界见插件 README。
+
 ### [抢车位助手](plugins.v3/qcwautopark)
 
   支持 MoviePilot V2/V3，直接调用抢车位游戏 HTTP 接口，无需浏览器常驻。每轮读取 MP 躺平 PT 主站的最新 Cookie，经主站登录入口取得游戏会话。默认每5分钟检查：自己私家车位上他人的车预估收益 **≥1000** 时贴条，自己的车基础收益 **>2000** 时收车，再自动停车。停车目标必须同时满足 **等级≤3、金币≤3000**，阈值均可配置。所有请求完成后至少间隔10秒，防止接口响应慢时连续操作；结果页保留最近20轮记录。

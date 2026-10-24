@@ -162,5 +162,18 @@
       "v2.0.0": "适配 MoviePilot V2/V3；原生客户端避免修改全局设置，修复定时配置保存与计数，保留 Transmission 分组并增加结果页。",
       "v1.9": "上游 honue：修复 Tracker 替换计数问题。"
     }
+  },
+  "DownloadBooster": {
+    "name": "刷下载",
+    "description": "单下载器循环下载本地种子，定时删除数据并重加，累计达标停止；支持进度持久化与分身。",
+    "labels": "下载,流量",
+    "version": "1.0.0",
+    "icon": "Youtube-dl_A.png",
+    "author": "tmzg0000",
+    "level": 2,
+    "history": {
+      "v1.0.0": "初始发布：单选MP下载器、多种子同时添加、做种到时删任务及数据、冷却重加、累计达标收尾、持久化与重置。"
+    },
+    "system_version": ">=3.0.0"
   }
 }
