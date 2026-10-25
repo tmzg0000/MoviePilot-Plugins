@@ -124,6 +124,12 @@ class Client:
             self.api.add_torrent(torrent=data, download_dir=record['path'],
                                  labels=record['tags'], paused=False)
 
+    def remove_legacy_marker(self, hash_value, marker, torrent):
+        if self.kind == 'qbittorrent':
+            self.api.torrents_remove_tags(torrent_hashes=hash_value, tags=marker)
+        else:
+            self.api.change_torrent(ids=hash_value, labels=sorted(torrent['tags'] - {marker}))
+
     def delete(self, hash_value):
         if self.kind == 'qbittorrent':
             self.api.torrents_delete(torrent_hashes=hash_value, delete_files=True)
@@ -131,8 +137,8 @@ class Client:
             self.api.remove_torrent(ids=hash_value, delete_data=True)
 
 
-def owns(record, torrent):
-    return record['marker'] in torrent['tags'] and record['path'] == torrent['path']
+def owns(tag, torrent):
+    return tag in torrent['tags']
 
 
 def fresh():
@@ -145,6 +151,7 @@ class Runner:
         self.save, self.stopped = save, stopped
         self.clock = now if callable(now) else lambda: now
         self.messages = []
+        self.report = {'added': 0, 'deleted': 0}
 
     @property
     def now(self):
@@ -153,12 +160,42 @@ class Runner:
     def checkpoint(self):
         self.save(self.state)
 
+    def discover(self, torrents, sources=None):
+        """The configured tag alone grants management, including existing tasks."""
+        tasks, tag = self.state['tasks'], self.config['tag']
+        for hash_value, torrent in torrents.items():
+            record = tasks.get(hash_value)
+            if not owns(tag, torrent):
+                # Removing/changing the management tag releases the live task.
+                tasks.pop(hash_value, None)
+                continue
+            if not record or record['phase'] == 'cooldown':
+                record = {'phase': 'active', 'tags': [tag], 'path': torrent['path'],
+                          'last': 0, 'completed': None,
+                          'name': (sources or {}).get(hash_value, (hash_value,))[0]}
+                tasks[hash_value] = record
+            marker = record.get('marker')
+            if marker and marker in torrent['tags']:
+                try:
+                    self.client.remove_legacy_marker(hash_value, marker, torrent)
+                    torrent['tags'].discard(marker)
+                    record.pop('marker', None)
+                except Exception:
+                    self.messages.append(f'旧身份标签清理失败，后续重试：{hash_value}')
+            record['tags'] = [tag]
+            record['path'] = torrent['path']
+        # Pending submissions from the old release must also use only this tag.
+        for record in tasks.values():
+            record['tags'] = [tag]
+        self.checkpoint()
+
     def reset(self):
         # Keep ownership and cooldowns. Only bytes observed after this point count.
         torrents = self.client.list()
+        self.discover(torrents)
         for hash_value, record in self.state['tasks'].items():
             torrent = torrents.get(hash_value)
-            if torrent and owns(record, torrent):
+            if torrent and owns(self.config['tag'], torrent):
                 record['last'] = torrent['downloaded']
         self.state.update(total=0, reached=False, finished=False)
         self.checkpoint()
@@ -166,6 +203,7 @@ class Runner:
     def run(self, sources):
         state, config = self.state, self.config
         torrents = self.client.list()  # A failed list must never be treated as an empty downloader.
+        self.discover(torrents, sources)
         tasks = state['tasks']
         for hash_value, record in tasks.items():
             if self.stopped():
@@ -176,14 +214,15 @@ class Runner:
                 continue
             if torrent is None:
                 # A pending add may be asynchronous or have an ambiguous network outcome.
-                # Retry only while absent; keep the same unique marker and isolated directory.
+                # Retry only while absent; keep the same tag and isolated directory.
                 if phase == 'adding':
                     continue
                 record.update(phase='cooldown', deleted=self.now)
+                self.report['deleted'] += 1
                 self.checkpoint()
                 continue
-            if not owns(record, torrent):
-                self.messages.append(f"任务身份不匹配，跳过：{hash_value}")
+            if not owns(self.config['tag'], torrent):
+                self.messages.append(f"任务不含管理标签，跳过：{hash_value}")
                 continue
             current = torrent['downloaded']
             state['total'] += max(0, current - record.get('last', 0))
@@ -204,7 +243,7 @@ class Runner:
             if self.stopped():
                 return
             torrent = torrents.get(hash_value)
-            if not torrent or not owns(record, torrent):
+            if not torrent or not owns(self.config['tag'], torrent):
                 continue
             due = record.get('completed') is not None and self.now - record['completed'] >= config['seed_minutes'] * 60
             if record['phase'] == 'deleting' or due or (state['reached'] and config['finish_mode'] == 'immediate'):
@@ -215,6 +254,7 @@ class Runner:
                     # Only confirmed absence starts the cooldown.
                     if hash_value not in self.client.list():
                         record.update(phase='cooldown', deleted=self.now)
+                        self.report['deleted'] += 1
                         self.checkpoint()
                 except Exception:
                     self.messages.append(f"删除未确认，后续检查重试：{hash_value}")
@@ -231,21 +271,22 @@ class Runner:
                 continue
             if record and record['phase'] == 'cooldown' and self.now - record['deleted'] < config['readd_minutes'] * 60:
                 continue
-            # Recheck immediately before adding; never adopt an already existing hash.
+            # Recheck immediately before adding; never submit a duplicate hash (tagged tasks were discovered above).
             existing = self.client.list().get(hash_value)
             if existing:
-                if not record or not owns(record, existing):
+                if not record or not owns(config['tag'], existing):
                     self.messages.append(f'已有同哈希任务，跳过：{name}')
                 continue
             if not record or record['phase'] == 'cooldown':
                 marker = 'mp-downloadbooster-' + uuid.uuid4().hex
-                record = {'phase': 'adding', 'marker': marker, 'tags': [config['tag'], marker],
+                record = {'phase': 'adding', 'tags': [config['tag']],
                           'path': str(PurePosixPath(config['save_path']) / marker),
                           'last': 0, 'completed': None, 'name': name}
                 tasks[hash_value] = record
                 self.checkpoint()
             try:
                 self.client.add(data, record)
+                self.report['added'] += 1
                 # Remain in adding until a subsequent successful scan proves ownership.
             except Exception:
                 self.messages.append(f"添加未确认，后续检查重试：{name}")

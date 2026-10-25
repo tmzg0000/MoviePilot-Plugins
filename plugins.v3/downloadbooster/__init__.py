@@ -24,14 +24,14 @@ from .core import Client, ConfigError, Runner, fresh, number, scan
 
 DEFAULTS = {'enabled': False, 'downloader': '', 'torrent_path': '', 'save_path': '',
             'target_gb': 100, 'tag': '刷下载', 'seed_minutes': 15, 'readd_minutes': 15,
-            'check_minutes': 10, 'finish_mode': 'graceful', 'reset': False}
+            'check_minutes': 10, 'finish_mode': 'graceful', 'history_days': 5, 'reset': False}
 
 
 class DownloadBooster(_PluginBase):
     plugin_name = '刷下载'
     plugin_desc = '循环下载本地种子，做种到时删除数据，达到累计下载目标后停止。'
     plugin_icon = 'Youtube-dl_A.png'
-    plugin_version = '1.0.0'
+    plugin_version = '1.0.2'
     plugin_author = 'tmzg0000'
     author_url = 'https://github.com/tmzg0000/MoviePilot-Plugins'
     plugin_config_prefix = 'downloadbooster_'
@@ -47,8 +47,12 @@ class DownloadBooster(_PluginBase):
         self._config = dict(DEFAULTS, **(config or {}))
         self._invalid = False
         try:
-            for key in ('target_gb', 'seed_minutes', 'readd_minutes', 'check_minutes'):
-                self._config[key] = number(self._config[key], 0.001 if key == 'target_gb' else 1 if key == 'check_minutes' else 0)
+            for key in ('target_gb', 'seed_minutes', 'readd_minutes', 'check_minutes', 'history_days'):
+                self._config[key] = number(self._config[key], 0.001 if key == 'target_gb' else 1 if key in ('check_minutes', 'history_days') else 0)
+            days = number(self._config['history_days'], 1)
+            if days != int(days):
+                raise ConfigError('日志保留天数必须为大于等于1的整数')
+            self._config['history_days'] = int(days)
             if self._config['finish_mode'] not in ('graceful', 'immediate'):
                 raise ConfigError('达到目标后的处理选项无效')
             for key in ('downloader', 'torrent_path', 'save_path', 'tag'):
@@ -119,6 +123,8 @@ class DownloadBooster(_PluginBase):
                     self._config['reset'] = False
                     self.update_config(self._config)
             if not config['enabled'] or stop.is_set():
+                if not stop.is_set():
+                    self._record('已重置', '统计已清零，插件未启用', state)
                 return
             # Cleanup must continue even if the source folder was moved or removed.
             try:
@@ -128,8 +134,7 @@ class DownloadBooster(_PluginBase):
             runner.run(sources)
             messages = errors + runner.messages
             status = '已完成' if state['finished'] else '达标清理中' if state['reached'] else '运行中'
-            self.save_data('status', {'status': status, 'checked': datetime.now(ZoneInfo(settings.TZ)).isoformat(),
-                                      'message': '；'.join(messages[-10:])})
+            self._record(status, '；'.join(messages[-10:]) or '检查完成', state, runner.report)
             logger.info(f"刷下载：{status}，累计 {state['total'] / 1024 ** 3:.3f} GiB")
             for message in messages:
                 logger.warning(f'刷下载：{message}')
@@ -143,7 +148,30 @@ class DownloadBooster(_PluginBase):
 
     def _error(self, message):
         logger.error(f'刷下载：{message}')
-        self.save_data('status', {'status': '等待处理', 'message': message})
+        self._record('等待处理', message)
+
+    def _history(self, now, prune=False):
+        history = self.get_data('history') or []
+        cutoff = now - self._config['history_days'] * 86400
+        kept = [row for row in history if row['timestamp'] >= cutoff]
+        if prune and len(kept) != len(history):
+            self.save_data('history', kept)
+        return kept
+
+    def _record(self, status, message, state=None, report=None):
+        """Called under the run lock: append every actual check, including failures."""
+        now = time()
+        state = state if state is not None else self.get_data('progress') or fresh()
+        report = report or {}
+        checked = datetime.fromtimestamp(now, ZoneInfo(settings.TZ)).isoformat(timespec='seconds')
+        row = {'timestamp': now, 'checked': checked, 'status': status, 'message': message,
+               'total_gb': f"{state['total'] / 1024 ** 3:.3f}",
+               'added': report.get('added', 0), 'deleted': report.get('deleted', 0),
+               'managed': sum(r['phase'] != 'cooldown' for r in state['tasks'].values())}
+        history = self._history(now)
+        history.insert(0, row)
+        self.save_data('history', history)
+        self.save_data('status', {'status': status, 'checked': checked, 'message': message})
 
     def get_form(self):
         try:
@@ -161,10 +189,11 @@ class DownloadBooster(_PluginBase):
                            ('target_gb', '目标下载量（GiB，1G=1024³字节）'),
                            ('seed_minutes', '下载完成后保留做种时间（分钟）'),
                            ('readd_minutes', '确认删除后重新添加间隔（分钟）'),
-                           ('check_minutes', '检查间隔（分钟）')]:
+                           ('check_minutes', '检查间隔（分钟）'),
+                           ('history_days', '日志保留天数（超期自动删除）')]:
             props = {'model': key, 'label': label}
-            if key in ('target_gb', 'seed_minutes', 'readd_minutes', 'check_minutes'):
-                props.update(type='number', min=0.001 if key == 'target_gb' else 1 if key == 'check_minutes' else 0)
+            if key in ('target_gb', 'seed_minutes', 'readd_minutes', 'check_minutes', 'history_days'):
+                props.update(type='number', min=0.001 if key == 'target_gb' else 1 if key in ('check_minutes', 'history_days') else 0)
             fields.append({'component': 'VTextField', 'props': props})
         fields += [
             {'component': 'VSelect', 'props': {'model': 'finish_mode', 'label': '达到目标后的处理', 'items': [
@@ -172,7 +201,7 @@ class DownloadBooster(_PluginBase):
                 {'title': '立即删除本插件任务及数据', 'value': 'immediate'}]}},
             {'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text':
                 '所有种子同时添加；每轮使用独立数据子目录，删除任务时同时删除数据，保留源种子。'
-                '只统计并管理本插件记录且身份匹配的任务，已有同哈希任务跳过。达标后停止添加，检查间隔可能导致超量。'
+                '设置的标签是唯一管理依据：所有带此标签的任务均会统计、到时删除任务及数据；不带此标签的已有任务跳过。达标后停止添加，检查间隔可能导致超量。'
                 '关闭插件暂停管理，不清理下载器任务；重新开启继续进度。重置统计保留已有任务及等待时间。'}}]
         return [{'component': 'VForm', 'content': fields}], dict(DEFAULTS)
 
@@ -186,6 +215,19 @@ class DownloadBooster(_PluginBase):
         for hash_value, record in state['tasks'].items():
             items.append({'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text':
                 f"{record.get('name', hash_value)}：{phases.get(record['phase'], record['phase'])}；本轮已下载 {record.get('last', 0) / 1024 ** 3:.3f} GiB"}})
+        acquired = self._lock.acquire(blocking=False)
+        try:
+            history = self._history(time(), prune=acquired)
+        finally:
+            if acquired:
+                self._lock.release()
+        items.append({'component': 'VDataTable', 'props': {
+            'headers': [{'title': title, 'key': key} for title, key in (
+                ('检查时间', 'checked'), ('状态', 'status'), ('累计下载 GiB', 'total_gb'),
+                ('本次提交添加', 'added'), ('本次确认移除', 'deleted'),
+                ('管理中任务', 'managed'), ('检查说明', 'message'))],
+            'items': history, 'items-per-page': 20, 'items-per-page-options': [20, 50, 100],
+            'no-data-text': '暂无检查记录', 'density': 'compact'}})
         return items
 
     @staticmethod

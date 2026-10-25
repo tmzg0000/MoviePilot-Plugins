@@ -3,7 +3,7 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
 ### [刷下载](plugins.v3/downloadbooster)
 
-支持 MoviePilot V2/V3，单选 MP 中的 qBittorrent / Transmission 下载器，多下载器使用插件分身。目录中的多个种子同时添加，默认累计目标 100 GiB、标签“刷下载”、下载完成后保留做种 15 分钟、确认删除任务及数据后间隔 15 分钟重加，每 10 分钟检查。默认达标后让现有任务完成下载、做种并清理，也可选择立即清理；支持持久化进度和重置统计，只管理自身添加且身份匹配的任务。
+支持 MoviePilot V2/V3，单选 MP 中的 qBittorrent / Transmission 下载器，多下载器使用插件分身。目录中的多个种子同时添加，默认累计目标 100 GiB、标签“刷下载”、下载完成后保留做种 15 分钟、确认删除任务及数据后间隔 15 分钟重加，每 10 分钟检查。默认达标后让现有任务完成下载、做种并清理，也可选择立即清理；支持持久化进度和重置统计，仅添加设置的标签，并以该标签作为唯一管理依据，所有同标签任务均会纳入统计和清理。每次检查追加运行记录，默认保留5天并自动删除超期记录。
 
 - V2：[`plugins.v2/downloadbooster`](plugins.v2/downloadbooster)
 - V3：[`plugins.v3/downloadbooster`](plugins.v3/downloadbooster)
