@@ -31,7 +31,7 @@ class DownloadBooster(_PluginBase):
     plugin_name = '刷下载'
     plugin_desc = '循环下载本地种子，做种到时删除数据，达到累计下载目标后停止。'
     plugin_icon = 'Youtube-dl_A.png'
-    plugin_version = '1.0.2'
+    plugin_version = '1.0.3'
     plugin_author = 'tmzg0000'
     author_url = 'https://github.com/tmzg0000/MoviePilot-Plugins'
     plugin_config_prefix = 'downloadbooster_'
@@ -221,13 +221,26 @@ class DownloadBooster(_PluginBase):
         finally:
             if acquired:
                 self._lock.release()
-        items.append({'component': 'VDataTable', 'props': {
-            'headers': [{'title': title, 'key': key} for title, key in (
-                ('检查时间', 'checked'), ('状态', 'status'), ('累计下载 GiB', 'total_gb'),
-                ('本次提交添加', 'added'), ('本次确认移除', 'deleted'),
-                ('管理中任务', 'managed'), ('检查说明', 'message'))],
-            'items': history, 'items-per-page': 20, 'items-per-page-options': [20, 50, 100],
-            'no-data-text': '暂无检查记录', 'density': 'compact'}})
+        columns = [('检查时间', 'checked'), ('状态', 'status'), ('累计下载 GiB', 'total_gb'),
+                   ('本次提交添加', 'added'), ('本次确认移除', 'deleted'),
+                   ('管理中任务', 'managed'), ('检查说明', 'message')]
+        items.append({'component': 'div', 'props': {'class': 'text-subtitle-1 mt-4 mb-2'},
+                      'text': f'检查记录（{len(history)} 条，保留 {self._config["history_days"]} 天）'})
+        # MP supplies the dynamic component's default slot, hiding VDataTable's
+        # generated header/body. Explicit children work with the host renderer.
+        if history:
+            items.append({'component': 'VTable', 'props': {
+                'density': 'compact', 'height': 420, 'fixed-header': True, 'hover': True}, 'content': [
+                    {'component': 'thead', 'content': [{'component': 'tr', 'content': [
+                        {'component': 'th', 'props': {'style': 'white-space: nowrap'}, 'text': title}
+                        for title, _ in columns]}]},
+                    {'component': 'tbody', 'content': [{'component': 'tr', 'content': [
+                        {'component': 'td', 'props': {'style': 'white-space: nowrap'},
+                         'text': str(row.get(key, '—'))} for _, key in columns]} for row in history]},
+                ]})
+        else:
+            items.append({'component': 'VAlert', 'props': {
+                'type': 'info', 'variant': 'tonal', 'text': '暂无检查记录'}})
         return items
 
     @staticmethod
