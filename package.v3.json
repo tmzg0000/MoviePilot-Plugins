@@ -82,13 +82,14 @@
   },
   "gladossigner": {
     "name": "GlaDOS 签到助手",
-    "description": "每日签到获取点数，支持可选自动兑换 10~100 天套餐时长",
+    "description": "邮箱验证码登录、持久化会话、每日签到及可选积分兑换，兼容V2/V3",
     "labels": "签到,GlaDOS,VPN",
-    "version": "3.6.1",
+    "version": "3.6.2",
     "icon": "https://raw.githubusercontent.com/madrays/MoviePilot-Plugins/main/icons/glados.png",
     "author": "tmzg0000",
     "level": 2,
     "history": {
+      "v3.6.2": "基于上游4.0.5同步适配V2/V3：邮箱验证码登录、固定设备身份、会话持久化与Cookie轮换；原生配置和数据页，保留历史记录，升级后需重新登录。",
       "v3.6.1": "一次性凭证使用 JSON；Cookie 支持独立 cURL 导入或手填四项，完善 HTTP 手动复制指引，维护作者改为 tmzg0000。",
       "v3.6.0": "修复跨设备签到：请求头改用凭证记录的登录设备 UA（此前硬编码 macOS 导致 Windows 等设备必报 code=4 device-mismatch），并同步 sec-ch-ua-platform",
       "v3.0.1": "适配 glados.space 控制台的设备不一致提示；新增可选积分自动兑换套餐",
