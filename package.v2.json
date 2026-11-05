@@ -247,5 +247,17 @@
       "v1.0.1": "仅添加配置标签，按该标签管理所有任务；自动清理旧版历史任务的随机身份标签，保留统计进度。",
       "v1.0.0": "初始发布：单选MP下载器、多种子同时添加、做种到时删任务及数据、冷却重加、累计达标收尾、持久化与重置。"
     }
+  },
+  "PigTrackerHelper": {
+    "name": "猪猪Tracker更新助手",
+    "description": "根据新种文件更新所选下载器中对应种子的 piggo.me Tracker",
+    "labels": "Tracker,猪猪,下载器",
+    "version": "1.0.0",
+    "icon": "https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png",
+    "author": "tmzg0000",
+    "level": 1,
+    "history": {
+      "v1.0.0": "支持多下载器和递归扫描种子文件更新猪猪 Tracker"
+    }
   }
 }
