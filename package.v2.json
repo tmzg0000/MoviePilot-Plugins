@@ -252,11 +252,12 @@
     "name": "猪猪Tracker更新助手",
     "description": "根据新种文件更新所选下载器中对应种子的 piggo.me Tracker",
     "labels": "Tracker,猪猪,下载器",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png",
     "author": "tmzg0000",
     "level": 1,
     "history": {
+      "v1.0.2": "增加猪猪旧密钥种子打包下载和解压说明。",
       "v1.0.1": "改为一次性任务，默认保存后立即运行，移除定时设置。",
       "v1.0.0": "支持多下载器和递归扫描种子文件更新猪猪 Tracker"
     }

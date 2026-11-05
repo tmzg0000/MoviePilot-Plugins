@@ -23,7 +23,7 @@ class PigTrackerHelper(_PluginBase):
     plugin_name = '猪猪Tracker更新助手'
     plugin_desc = '根据新种文件更新所选下载器中对应种子的 piggo.me Tracker。'
     plugin_icon = 'https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png'
-    plugin_version = '1.0.1'
+    plugin_version = '1.0.2'
     plugin_author = 'tmzg0000'
     author_url = 'https://github.com/tmzg0000/MoviePilot-Plugins'
     plugin_config_prefix = 'pigtrackerhelper_'
@@ -117,6 +117,12 @@ class PigTrackerHelper(_PluginBase):
             field('VSwitch', 'onlyonce', '保存后立即运行一次'),
             field('VSelect', 'downloaders', '下载器', items=options, multiple=True, chips=True),
             field('VTextField', 'torrent_path', '新种目录（包括子目录）'),
+            {'component': 'VCol', 'props': {'cols': 12}, 'content': [
+                {'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal'}, 'content': [
+                    {'component': 'span', 'text': '也可以先去猪猪'},
+                    {'component': 'a', 'props': {'href': 'https://piggo.me/usercp', 'target': '_blank', 'rel': 'noopener noreferrer'}, 'text': '个人中心'},
+                    {'component': 'span', 'text': '，点击“仍用密钥汇报的种子”，将仍使用旧密钥汇报的种子打包下载，解压到新种目录后再替换。该入口为临时入口，生成前建议先强制汇报，等待 5 分钟后再使用。'}
+                ]}]},
             {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VAlert', 'props': {
                 'type': 'info', 'variant': 'tonal', 'text': '按种子 info hash 匹配，使用新种中的 piggo.me 地址更新已有种子；同一 hash 的新种地址冲突时跳过。支持 qBittorrent 和 Transmission。'}}]}
         ]}]}], dict(self._config, onlyonce=True)
