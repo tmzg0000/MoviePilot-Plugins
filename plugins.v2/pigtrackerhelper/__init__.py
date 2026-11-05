@@ -2,7 +2,6 @@
 from datetime import datetime, timedelta
 from threading import Event, Lock
 from zoneinfo import ZoneInfo
-from apscheduler.triggers.cron import CronTrigger
 
 try:
     from app.sdk.plugin import _PluginBase
@@ -24,7 +23,7 @@ class PigTrackerHelper(_PluginBase):
     plugin_name = '猪猪Tracker更新助手'
     plugin_desc = '根据新种文件更新所选下载器中对应种子的 piggo.me Tracker。'
     plugin_icon = 'https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png'
-    plugin_version = '1.0.0'
+    plugin_version = '1.0.1'
     plugin_author = 'tmzg0000'
     author_url = 'https://github.com/tmzg0000/MoviePilot-Plugins'
     plugin_config_prefix = 'pigtrackerhelper_'
@@ -37,10 +36,8 @@ class PigTrackerHelper(_PluginBase):
         self.stop_service()
         self._stop = Event()
         config = config or {}
-        self._config = {'enabled': bool(config.get('enabled')), 'onlyonce': False,
-                        'downloaders': config.get('downloaders') or [],
-                        'torrent_path': str(config.get('torrent_path') or '/config/plugins/PigTrackerHelper').strip(),
-                        'cron': str(config.get('cron') or '0 * * * *').strip()}
+        self._config = {'onlyonce': False, 'downloaders': config.get('downloaders') or [],
+                        'torrent_path': str(config.get('torrent_path') or '/config/plugins/PigTrackerHelper').strip()}
         try:
             from pathlib import Path
             Path(self._config['torrent_path']).mkdir(parents=True, exist_ok=True)
@@ -95,17 +92,10 @@ class PigTrackerHelper(_PluginBase):
             self._lock.release()
 
     def get_state(self):
-        return self._config['enabled']
+        return False
 
     def get_service(self):
-        if not self.get_state():
-            return []
-        try:
-            trigger = CronTrigger.from_crontab(self._config['cron'], timezone=settings.TZ)
-        except ValueError:
-            logger.error('猪猪Tracker更新助手：Cron 表达式无效')
-            return []
-        return [{'id': 'PigTrackerHelper', 'name': '猪猪Tracker更新', 'trigger': trigger, 'func': self.task, 'kwargs': {}}]
+        return []
 
     @staticmethod
     def get_command():
@@ -124,14 +114,12 @@ class PigTrackerHelper(_PluginBase):
             return {'component': 'VCol', 'props': {'cols': 12}, 'content': [
                 {'component': component, 'props': {'model': model, 'label': label, **props}}]}
         return [{'component': 'VForm', 'content': [{'component': 'VRow', 'content': [
-            field('VSwitch', 'enabled', '启用定时更新'),
             field('VSwitch', 'onlyonce', '保存后立即运行一次'),
             field('VSelect', 'downloaders', '下载器', items=options, multiple=True, chips=True),
             field('VTextField', 'torrent_path', '新种目录（包括子目录）'),
-            field('VCronField', 'cron', '执行周期'),
             {'component': 'VCol', 'props': {'cols': 12}, 'content': [{'component': 'VAlert', 'props': {
                 'type': 'info', 'variant': 'tonal', 'text': '按种子 info hash 匹配，使用新种中的 piggo.me 地址更新已有种子；同一 hash 的新种地址冲突时跳过。支持 qBittorrent 和 Transmission。'}}]}
-        ]}]}], dict(self._config)
+        ]}]}], dict(self._config, onlyonce=True)
 
     def get_page(self):
         report = self.get_data('latest')
