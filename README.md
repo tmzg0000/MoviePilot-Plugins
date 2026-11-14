@@ -1,6 +1,14 @@
 # MoviePilot-Plugins
 MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
+### [栖影签到助手 / xiyinghelper](plugins.v3/xiyinghelper)
+
+支持 MoviePilot V2/V3，自动复用 MP CookieCloud 中 `hdhaven.com` 的最新 Cookie，通过网页 HTTP 请求访问个人中心签到，无需浏览器或 OpenAPI 凭证。默认普通签到、北京时间每天 00:10 执行，并默认勾选 MP 全局代理；可改选赌狗签到。账户确认已签到才记录成功，保留最近 30 次运行记录，支持立即执行与通知。
+
+- V2：[`plugins.v2/xiyinghelper`](plugins.v2/xiyinghelper)
+- V3：[`plugins.v3/xiyinghelper`](plugins.v3/xiyinghelper)
+- 需先在浏览器登录并同步 CookieCloud；赌狗签到可能扣除积分，默认关闭。
+
 ### [刷下载](plugins.v3/downloadbooster)
 
 支持 MoviePilot V2/V3，单选 MP 中的 qBittorrent / Transmission 下载器，多下载器使用插件分身。目录中的多个种子同时添加，默认累计目标 100 GiB、标签“刷下载”、下载完成后保留做种 15 分钟、确认删除任务及数据后间隔 15 分钟重加，每 10 分钟检查。默认达标后让现有任务完成下载、做种并清理，也可选择立即清理；支持持久化进度和重置统计，仅添加设置的标签，并以该标签作为唯一管理依据，所有同标签任务均会纳入统计和清理。每次检查追加运行记录，默认保留5天并自动删除超期记录。
