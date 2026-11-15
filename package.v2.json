@@ -266,11 +266,12 @@
     "name": "栖影签到助手",
     "description": "无需浏览器或 OpenAPI，自动复用 MP CookieCloud，通过网页 HTTP 请求定时签到；默认普通签到与 MP 代理。",
     "labels": "签到,CookieCloud,栖影",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "signin.png",
     "author": "tmzg0000",
     "level": 1,
     "history": {
+      "v1.0.2": "新增不签到的登录检测与脱敏 Cookie 字段诊断；区分 401 和入口跳转，使用账户状态判断登录。",
       "v1.0.1": "改为无浏览器网页 HTTP 签到，不申请 OpenAPI；补全同源请求头，提交后复查账户状态，结果不明不重发。",
       "v1.0.0": "首次发布：自动读取 MP CookieCloud，支持普通／赌狗签到、北京时间计划、MP 代理及签到结果记录。"
     }

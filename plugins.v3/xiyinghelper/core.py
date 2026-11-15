@@ -1,6 +1,9 @@
 """HDHaven website check-in over HTTP; no browser or OpenAPI credentials."""
 from __future__ import annotations
 
+import re
+from urllib.parse import urlsplit
+
 import requests
 
 HOST = "hdhaven.com"
@@ -47,14 +50,20 @@ def _payload(response):
     return payload if isinstance(payload, dict) else {}
 
 
-def _check_response(response, payload):
+def _check_response(response, payload, stage="账户校验"):
     # Only emit our own messages: response text can contain account/session data.
     code = payload.get("code")
     if isinstance(code, str) and code in ERROR_CODES:
         raise SigninError(ERROR_CODES[code])
     status = response.status_code
-    if status == 401 or (300 <= status < 400):
-        raise SigninError("栖影 Cookie 已失效或页面跳转，请重新登录并同步 CookieCloud")
+    if status == 401:
+        raise SigninError(f"{stage} HTTP 401：站点未接受 CookieCloud 中的登录 Cookie")
+    if 300 <= status < 400:
+        location = str(response.headers.get("Location", ""))
+        path = urlsplit(location).path
+        target = "登录页" if path.rstrip("/") == "/login" else (
+            "会话验证页" if path.rstrip("/") == "/verify-session" else "其他页面")
+        raise SigninError(f"{stage} HTTP {status}：跳转到{target}，尚不能确认 Cookie 过期")
     if status == 403:
         raise SigninError("栖影拒绝访问（HTTP 403），请检查会话验证、Cookie 和代理出口")
     if status == 429:
@@ -90,7 +99,7 @@ def _summary(profile, submitted=None):
     return "；" + "，".join(parts) if parts else ""
 
 
-def run_http(session, mode, before_submit, attempted=False, stop=None):
+def run_http(session, mode, before_submit, attempted=False, stop=None, check_only=False):
     if mode not in MODES:
         raise SigninError("签到模式无效，请重新选择")
     _cancelled(stop)
@@ -99,10 +108,16 @@ def run_http(session, mode, before_submit, attempted=False, stop=None):
         response = session.get(URL, timeout=TIMEOUT, allow_redirects=False)
     except requests.RequestException:
         raise SigninError("访问栖影个人中心失败，请检查网络和 MP 代理") from None
-    _check_response(response, _payload(response))
+    # A redirect on the HTML entry is not an authoritative session verdict.
+    # Still read the fixed account URL (never follow the Location with cookies).
+    landing_status = response.status_code
+    if not 300 <= landing_status < 400:
+        _check_response(response, _payload(response), stage="个人中心")
     profile = _get_profile(session, stop)
     if profile["checkin_today"]:
         return {"status": "已签到", "message": "账户确认今日已签到" + _summary(profile)}
+    if check_only:
+        return {"status": "已登录", "message": "账户确认 Cookie 有效，今日尚未签到；仅检测，未提交签到"}
     if attempted:
         raise SigninError("今天已发起过提交，账户尚未确认签到；为避免重复操作不再提交")
     _cancelled(stop)
@@ -133,7 +148,19 @@ def run_http(session, mode, before_submit, attempted=False, stop=None):
     raise SigninError("已发起签到，但账户未确认成功；今天不再自动重复提交")
 
 
-def sign(cookie, mode, proxy, before_submit, attempted=False, stop=None):
+def cookie_diagnostic(items):
+    # Names/counts only. Never include values, hashes, lengths or response bodies.
+    names = []
+    for name, value in items:
+        if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", name) and name not in names:
+            names.append(name)
+    duplicates = len(items) - len({name for name, value in items})
+    empty = sum(not value for name, value in items)
+    fields = ", ".join(names[:12]) or "无可显示字段"
+    return f"同步 Cookie {len(items)} 项；字段 {fields}；同名重复 {duplicates}；空值 {empty}"
+
+
+def sign(cookie, mode, proxy, before_submit, attempted=False, stop=None, check_only=False):
     _cancelled(stop)
     items = cookie_items(cookie)
     with requests.Session() as session:
@@ -150,4 +177,10 @@ def sign(cookie, mode, proxy, before_submit, attempted=False, stop=None):
             session.cookies.set(name, value, domain=HOST, path="/", secure=True)
         # All URLs are fixed HTTPS destinations and redirects are disabled to keep
         # cookies on HDHaven; requests keeps TLS certificate validation enabled.
-        return run_http(session, mode, before_submit, attempted, stop)
+        try:
+            result = run_http(session, mode, before_submit, attempted, stop, check_only)
+            if check_only:
+                result["message"] += "；" + cookie_diagnostic(items)
+            return result
+        except SigninError as error:
+            raise SigninError(str(error) + "；" + cookie_diagnostic(items)) from None

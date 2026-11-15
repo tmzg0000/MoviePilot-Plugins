@@ -28,7 +28,7 @@ class XiyingHelper(_PluginBase):
     plugin_name = "栖影签到助手"
     plugin_desc = "复用 MP CookieCloud，通过网页 HTTP 请求定时签到，无需浏览器或 OpenAPI。"
     plugin_icon = "signin.png"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     plugin_author = "tmzg0000"
     author_url = "https://github.com/tmzg0000/MoviePilot-Plugins"
     plugin_config_prefix = "xiyinghelper_"
@@ -43,12 +43,13 @@ class XiyingHelper(_PluginBase):
     _cron = "10 0 * * *"
     _run_once = False
     _invalid = False
+    _check_login = False
 
     def init_plugin(self, config=None):
         self.stop_service()
         self._stop = Event()
         config = config or {}
-        for key, default in (("enabled", False), ("notify", False), ("proxy", True), ("run_once", False)):
+        for key, default in (("enabled", False), ("notify", False), ("proxy", True), ("run_once", False), ("check_login", False)):
             setattr(self, "_" + key, bool(config.get(key, default)))
         self._mode = str(config.get("mode", "normal"))
         self._cron = str(config.get("cron") or "10 0 * * *").strip()
@@ -59,14 +60,15 @@ class XiyingHelper(_PluginBase):
             self._invalid = True
         if self._invalid:
             logger.error("栖影签到助手：签到模式或 Cron 配置无效")
-        if self._run_once:
-            self._run_once = False
+        if self._check_login or self._run_once:
+            check_only = self._check_login
+            self._run_once = self._check_login = False
             self.update_config(self._config())
-            self.run_signin()
+            self.run_signin(check_only=check_only)
 
     def _config(self):
         return {key: getattr(self, "_" + key) for key in
-                ("enabled", "notify", "proxy", "mode", "cron", "run_once")}
+                ("enabled", "notify", "proxy", "mode", "cron", "run_once", "check_login")}
 
     def get_state(self):
         return self._enabled and not self._invalid
@@ -85,7 +87,7 @@ class XiyingHelper(_PluginBase):
                  "trigger": CronTrigger.from_crontab(self._cron, timezone="Asia/Shanghai"),
                  "func": self.run_signin, "kwargs": {}}]
 
-    def run_signin(self):
+    def run_signin(self, check_only=False):
         if not self._lock.acquire(blocking=False):
             return
         try:
@@ -104,7 +106,7 @@ class XiyingHelper(_PluginBase):
             def before_submit():
                 self.save_data("attempt_day", today)
 
-            self._finish(sign(cookie, self._mode, proxy, before_submit, attempted=attempted, stop=self._stop))
+            self._finish(sign(cookie, self._mode, proxy, before_submit, attempted=attempted, stop=self._stop, check_only=check_only))
         except SigninError as error:
             self._finish({"status": "停止", "message": str(error)})
         except Exception:
@@ -128,7 +130,8 @@ class XiyingHelper(_PluginBase):
                 {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [
                     {"component": "VSwitch", "props": {"model": key, "label": label}}]}
                 for key, label in (("enabled", "启用定时签到"), ("proxy", "使用 MP 设置的代理"),
-                                   ("notify", "发送执行通知"), ("run_once", "保存后立即执行一次"))]},
+                                   ("notify", "发送执行通知"), ("run_once", "保存后立即执行一次"),
+                                   ("check_login", "保存后仅检测登录（不签到）"))]},
             {"component": "VSelect", "props": {"model": "mode", "label": "签到方式",
                 "items": [{"title": label, "value": key} for key, label in MODES.items()]}},
             {"component": "VCronField", "props": {"model": "cron", "label": "签到计划（北京时间）",
