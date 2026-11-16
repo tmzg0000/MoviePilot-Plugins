@@ -1,4 +1,5 @@
 """Tracker text rules and native downloader operations, adapted from honue's TrackerEditor."""
+import re
 from collections import OrderedDict
 from urllib.parse import urlsplit
 
@@ -25,10 +26,15 @@ def parse_rules(text):
 
 
 def replace_url(url, rules):
-    """Apply the first matching literal rule once, without cascading replacements."""
+    """Apply the first literal or whole-URL wildcard rule without cascading."""
     if not url.startswith(("http://", "https://", "udp://", "ws://", "wss://")):
         return url
     for old, new in rules:
+        if "*" in old:
+            pattern = ".*".join(re.escape(part) for part in old.split("*"))
+            if re.fullmatch(pattern, url):
+                return new
+            continue
         if old in url:
             return url.replace(old, new)
     return url

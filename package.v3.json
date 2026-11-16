@@ -154,12 +154,13 @@
     "name": "Tracker替换",
     "description": "批量替换 qBittorrent、Transmission 已有种子的 Tracker 文本。",
     "labels": "下载管理,Tracker",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "icon": "https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png",
     "author": "tmzg0000",
     "level": 1,
     "system_version": ">=3.0.0",
     "history": {
+      "v2.1.0": "支持 * 通配符匹配完整 Tracker 地址并整体替换，兼容原有普通文本规则。",
       "v2.0.0": "适配 MoviePilot V2/V3；原生客户端避免修改全局设置，修复定时配置保存与计数，保留 Transmission 分组并增加结果页。",
       "v1.9": "上游 honue：修复 Tracker 替换计数问题。"
     }

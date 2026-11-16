@@ -1,6 +1,6 @@
 # Tracker替换
 
-版本 **2.0.0**，支持 MoviePilot V2/V3；原插件由 [honue](https://github.com/honue) 编写，本仓库由 `tmzg0000` 维护。上游为 [jxxghp/MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins/tree/main/plugins/trackereditor)，来源与修改说明见 [NOTICE](NOTICE)，许可证见仓库根目录 [LICENSE](../../LICENSE)。
+版本 **2.1.0**，支持 MoviePilot V2/V3；原插件由 [honue](https://github.com/honue) 编写，本仓库由 `tmzg0000` 维护。上游为 [jxxghp/MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins/tree/main/plugins/trackereditor)，来源与修改说明见 [NOTICE](NOTICE)，许可证见仓库根目录 [LICENSE](../../LICENSE)。
 
 批量修改下载器中**已有种子**的 Tracker，支持 qBittorrent 与 Transmission **4.0+**。扫描所连接下载器的所有种子，不按分类或标签筛选。
 
@@ -13,7 +13,15 @@
    old.example.com|new.example.com
    ```
 
-   `https://old.example.com/announce?passkey=xxxx` 会替换成 `https://new.example.com/announce?passkey=xxxx`。可以替换协议、域名、路径或 Passkey；规则为区分大小写的普通字符串替换，不支持正则表达式。每个地址只应用从上往下第一条匹配规则，不连锁替换。空行忽略，两侧不能为空或相同；存在错误行时整轮不连接下载器。
+   `https://old.example.com/announce?passkey=xxxx` 会替换成 `https://new.example.com/announce?passkey=xxxx`。可以替换协议、域名、路径或 Passkey；不含 `*` 的规则为区分大小写的普通字符串替换，不支持正则表达式。每个地址只应用从上往下第一条匹配规则，不连锁替换。空行忽略，两侧不能为空或相同；存在错误行时整轮不连接下载器。
+
+   左侧含 `*` 时，改为匹配**整个 Tracker 地址**，命中后用右侧地址整体替换。`*` 匹配零个或多个任意字符，可以使用多次；`?`、方括号等其他字符均按字面匹配，右侧不展开通配符。例如，将 M-Team 所有不同查询参数统一为指定 Passkey：
+
+   ```text
+   https://tracker.m-team.cc/announce?*|https://tracker.m-team.cc/announce?passkey=你的新密钥
+   ```
+
+   该规则仅匹配指定协议、域名和路径，不会保留旧查询参数。已是目标地址时不提交修改。通配符与普通规则共同遵循第一条匹配优先。
 
 3. 勾选“保存后立即运行一次”，保存后后台执行；或开启“定时执行”并填写五位 Cron。定时任务使用 MoviePilot 的 `TZ` 时区。
 4. 插件详情页显示最近一次扫描、修改种子、修改 Tracker 与失败种子的数量；可开启结果通知。

@@ -27,7 +27,7 @@ class TrackerEditor(_PluginBase):
     plugin_name = "Tracker替换"
     plugin_desc = "批量替换 qBittorrent、Transmission 已有种子的 Tracker 文本。"
     plugin_icon = "https://raw.githubusercontent.com/tmzg0000/MoviePilot-Plugins/main/icons/trackereditor_A.png"
-    plugin_version = "2.0.0"
+    plugin_version = "2.1.0"
     plugin_author = "tmzg0000"
     author_url = "https://github.com/tmzg0000/MoviePilot-Plugins"
     plugin_config_prefix = "trackereditor_"
@@ -193,7 +193,7 @@ class TrackerEditor(_PluginBase):
                 field("VTextField", "password", "密码", type="password", autocomplete="off")),
             row(field("VTextarea", "tracker_config", "Tracker 替换规则", rows=6,
                       placeholder="old.example.com|new.example.com",
-                      hint="每行一条：旧文本|新文本。普通字符串替换，每个地址只应用第一条匹配规则。",
+                      hint="每行一条：旧文本|新文本。左侧含 * 时匹配完整地址并整体替换；* 匹配任意内容，? 为普通字符。无 * 时按普通文本替换，只应用首条匹配规则。",
                       **{"persistent-hint": True})),
             {"component": "VAlert", "props": {"type": "info", "variant": "tonal", "text":
                 "扫描下载器中的所有种子。建议先用测试 Tracker 验证规则。"
