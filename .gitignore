@@ -226,6 +226,7 @@ plugins.v2/mediacovergenerator/template_renderer.py
 tests/
 /tools/
 /plans/
+/NEXT_UPDATE_TODO.md
 
 # Archived cover templates; the active templates live directly in style/.
 /plugins.v2/yahahacoverstudio/style/legacy_presets_20260430/

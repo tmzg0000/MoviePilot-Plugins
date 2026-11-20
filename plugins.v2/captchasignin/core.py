@@ -121,6 +121,12 @@ DEFAULT_RULES: Dict[str, Dict[str, Any]] = {
         "already_keywords": ["今日已签到", "今天已签到", "已簽到"],
     },
     "dstudio.me": {"mode": "cloudflare", "path": "/attendance.php"},
+    "tangpt.top": {
+        "mode": "cloudflare",
+        "path": "/attendance.php",
+        # The header search form also has a submit input and appears first.
+        "submit_selector": "form[action*='attendance.php'] input[type='submit']",
+    },
     "mua.xloli.cc": {
         "mode": "cloudflare",
         "path": "/attendance.php",
