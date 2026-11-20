@@ -10,7 +10,7 @@ from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 from .core import SignResult, cookie_objects, normalize_host, target_url
-from .vault import read_bank
+from .vault import BankError, read_bank
 
 HOST = "ptchdbits.co"
 SIGNED = "今天已经签过到了"
@@ -184,11 +184,13 @@ class ChdSigner:
                 if is_signed(checked):
                     return SignResult("success", "彩虹岛：" + source + "后点不会，页面确认今天已经签过到了")
                 return SignResult("failed", "彩虹岛：" + source + "后已点不会，页面未出现今天已经签过到了；本日不再提交")
+        except BankError as error:
+            return SignResult("failed", "彩虹岛：" + str(error))
         except SigninError as error:
             return SignResult("failed", "彩虹岛：" + str(error))
         except ImportError:
             return SignResult("failed", "彩虹岛：缺少 cryptography 依赖，请重新安装插件依赖")
         except requests.RequestException:
             return SignResult("failed", "彩虹岛：网络请求或状态回查失败；若已提交，本日不再提交")
-        except Exception:
-            return SignResult("failed", "彩虹岛：题库解密或页面处理失败，请检查配置及插件资源")
+        except Exception as error:
+            return SignResult("failed", f"彩虹岛：页面或签到流程处理异常（{type(error).__name__}），请检查页面兼容性；此提示不代表解锁密码错误")

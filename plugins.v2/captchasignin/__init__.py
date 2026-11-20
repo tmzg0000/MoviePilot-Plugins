@@ -27,14 +27,14 @@ from app.schemas import NotificationType
 
 from .core import DEFAULT_BROWSERLESS_URL, BrowserlessSigner, HttpSigner, HybridSigner, LocalBrowserSigner, SignResult, parse_rules, resolve_rule, site_state_key, target_url
 from .chd import ChdSigner
-from .vault import unlock
+from .vault import bank_problem, unlock
 
 
 class CaptchaSignIn(_PluginBase):
     plugin_name = "验证码站点签到"
     plugin_desc = "密码解锁后启用；支持图片验证码、农场直连与彩虹岛加密题库签到。"
     plugin_icon = "signin.png"
-    plugin_version = "3.0.3"
+    plugin_version = "3.0.4"
     plugin_author = "tmzg0000"
     author_url = ""
     plugin_config_prefix = "captchasignin_"
@@ -66,6 +66,9 @@ class CaptchaSignIn(_PluginBase):
         self._enabled = bool(config.get("enabled", False)) and self._unlock_key is not None
         if (config.get("enabled") or config.get("run_once")) and self._unlock_key is None:
             logger.warning("验证码站点签到：未填写有效解锁密码，插件保持关闭")
+        problem = bank_problem(self._unlock_key)
+        if problem:
+            logger.warning(f"验证码站点签到：彩虹岛题库检查异常：{problem}")
         self._notify = bool(config.get("notify", True))
         self._cron = str(config.get("cron") or "15 8 * * *")
         groups = []
@@ -177,6 +180,7 @@ class CaptchaSignIn(_PluginBase):
                 for item in fields]}
 
         content = [
+            *self._bank_alerts(),
             row(field("VTextField", "activation_password", "插件解锁密码", type="text", autocomplete="off",
                       hint="作者WX:nasplayer；填写有效密码后才能启用插件或立即执行。", **{"persistent-hint": True})),
             row(field("VSwitch", "enabled", "启用插件"), field("VSwitch", "notify", "签到后发送通知"),
@@ -276,13 +280,24 @@ class CaptchaSignIn(_PluginBase):
         ]})
         return [{"component": "VForm", "content": content}], defaults
 
+    def _bank_alerts(self) -> List[dict]:
+        problem = bank_problem(self._unlock_key)
+        if not problem:
+            return []
+        return [{"component": "VAlert", "props": {
+            "type": "error", "variant": "tonal", "class": "mb-3",
+            "title": "彩虹岛题库检查异常",
+            "text": problem + "。此检查反映当前资源状态，不改变历史签到结果；其他站点可继续签到。",
+        }}]
+
     def get_page(self) -> List[dict]:
+        alerts = self._bank_alerts()
         records = self.get_data("latest") or []
         total = len(records)
         success = sum(row.get("status") in {"success", "already"} for row in records)
         failed = total - success
         if not records:
-            return [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "text": "暂无签到记录；保存配置后使用“立即执行一次”开始签到。", "prepend-icon": "mdi-information"}}]
+            return alerts + [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "text": "暂无签到记录；保存配置后使用“立即执行一次”开始签到。", "prepend-icon": "mdi-information"}}]
         rows = []
         for row in records:
             meta = self._status_meta(str(row.get("status") or ""))
@@ -298,6 +313,7 @@ class CaptchaSignIn(_PluginBase):
                 {"component": "td", "text": result},
             ]})
         return [
+            *alerts,
             {"component": "style", "text": ".captchasignin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.captchasignin-stat{padding:12px}.captchasignin-stat__label{color:rgba(var(--v-theme-on-surface),.62);font-size:.78rem}.captchasignin-stat__value{margin-top:6px;font-size:1.35rem;font-weight:700}.captchasignin-table-wrap{overflow-x:auto;border:1px solid rgba(var(--v-theme-on-surface),.08);border-radius:8px}.captchasignin-table{min-width:760px}.captchasignin-table th,.captchasignin-table td{padding:8px!important}"},
             {"component": "div", "props": {"class": "captchasignin-summary"}, "content": [
                 self._stat("本次站点", str(total), "已选择并完成处理", "info", "mdi-web"),
